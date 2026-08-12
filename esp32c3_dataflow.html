@@ -1,0 +1,597 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>XS-XLD5 ESP32-C3 系统数据流图</title>
+<style>
+:root {
+  --c-bg: #f8fafc;
+  --c-canvas: #ffffff;
+  --c-border: #cbd5e1;
+  --c-border-dark: #94a3b8;
+  --c-text-main: #0f172a;
+  --c-text-sub: #64748b;
+  --c-text-mute: #94a3b8;
+  --c-accent: #0369a1;
+  --font-ui: system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: 'SF Mono', Monaco, Consolas, 'Courier New', monospace;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  background: var(--c-bg);
+  font-family: var(--font-ui);
+  color: var(--c-text-main);
+  padding: 32px;
+}
+.diagram-canvas {
+  background: var(--c-canvas);
+  border: 2px solid var(--c-border);
+  padding: 28px;
+  max-width: 1440px;
+  margin: 0 auto;
+}
+.diagram-header {
+  border-bottom: 2px solid var(--c-border);
+  padding-bottom: 14px;
+  margin-bottom: 20px;
+}
+.diagram-title {
+  font-size: 22px;
+  font-weight: 600;
+}
+.diagram-subtitle {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--c-text-sub);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-top: 4px;
+}
+
+/* ── 3-column layout ── */
+.system-row {
+  display: grid;
+  grid-template-columns: 230px 1fr 230px;
+  gap: 16px;
+  align-items: stretch;
+}
+.col-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.col-title {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--c-text-sub);
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--c-border);
+  margin-bottom: 4px;
+  text-align: center;
+}
+
+/* ── Boxes ── */
+.box {
+  border: 1px solid var(--c-border);
+  padding: 10px 12px;
+  line-height: 1.5;
+}
+.box-title {
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+.box-detail {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--c-text-sub);
+}
+.box-accent {
+  border-color: var(--c-border-dark);
+}
+
+/* ── Button boxes ── */
+.btn-box {
+  border: 1px solid var(--c-border);
+  padding: 9px 11px;
+  position: relative;
+}
+.btn-box::after {
+  content: '';
+  position: absolute;
+  right: -16px;
+  top: 50%;
+  width: 16px;
+  border-top: 1px solid var(--c-border-dark);
+}
+.btn-box::before {
+  content: '';
+  position: absolute;
+  right: -16px;
+  top: 50%;
+  width: 0;
+  height: 0;
+  border-left: 5px solid var(--c-border-dark);
+  border-top: 3px solid transparent;
+  border-bottom: 3px solid transparent;
+  transform: translateY(-50%);
+}
+.btn-name {
+  font-size: 13px;
+  font-weight: 600;
+}
+.btn-gpio {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--c-accent);
+  margin: 2px 0;
+}
+.btn-ops {
+  font-size: 10px;
+  color: var(--c-text-sub);
+}
+
+/* ── MCU outline ── */
+.mcu-outline {
+  border: 2px solid var(--c-border-dark);
+  border-radius: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+.mcu-label {
+  background: var(--c-text-main);
+  color: var(--c-canvas);
+  font-size: 12px;
+  font-weight: 600;
+  text-align: center;
+  padding: 6px;
+  letter-spacing: 1px;
+}
+.mcu-inner {
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.mcu-hw {
+  border: 1px solid var(--c-border);
+  background: #f1f5f9;
+  padding: 8px 10px;
+}
+.mcu-sw {
+  border: 1px solid var(--c-border);
+  padding: 8px 10px;
+}
+.mcu-label-inline {
+  font-size: 12px;
+  font-weight: 600;
+  margin-bottom: 3px;
+}
+.mcu-detail {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--c-text-sub);
+  line-height: 1.6;
+}
+.arrow-down {
+  text-align: center;
+  font-size: 14px;
+  color: var(--c-text-mute);
+  line-height: 1;
+  padding: 1px 0;
+}
+.arrow-label {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--c-text-mute);
+}
+
+/* ── Branch row inside MCU ── */
+.branch-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr 1fr;
+  gap: 6px;
+  margin-top: 4px;
+}
+.branch-box {
+  border: 1px solid var(--c-border);
+  padding: 7px 8px;
+  text-align: center;
+}
+.branch-box .branch-title {
+  font-size: 11px;
+  font-weight: 600;
+  margin-bottom: 2px;
+}
+.branch-box .branch-detail {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--c-text-sub);
+  line-height: 1.5;
+}
+
+/* ── HW peripherals row ── */
+.hw-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr 1fr;
+  gap: 6px;
+}
+.hw-box {
+  border: 1px solid var(--c-border);
+  background: #f1f5f9;
+  padding: 6px 8px;
+  text-align: center;
+}
+.hw-box .hw-title {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+}
+.hw-box .hw-detail {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--c-text-sub);
+  margin-top: 2px;
+}
+
+/* ── Output boxes ── */
+.out-box {
+  border: 1px solid var(--c-border);
+  padding: 9px 11px;
+  position: relative;
+}
+.out-box::before {
+  content: '';
+  position: absolute;
+  left: -16px;
+  top: 50%;
+  width: 16px;
+  border-top: 1px solid var(--c-border-dark);
+}
+.out-arrow {
+  position: absolute;
+  left: -16px;
+  top: 50%;
+  width: 0;
+  height: 0;
+  border-right: 5px solid var(--c-border-dark);
+  border-top: 3px solid transparent;
+  border-bottom: 3px solid transparent;
+  transform: translateY(-50%);
+}
+.out-name {
+  font-size: 13px;
+  font-weight: 600;
+}
+.out-gpio {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--c-accent);
+  margin: 2px 0;
+}
+.out-detail {
+  font-size: 10px;
+  color: var(--c-text-sub);
+}
+
+/* ── State machine mini diagram ── */
+.state-box {
+  border: 1px solid var(--c-border);
+  padding: 8px 10px;
+  text-align: center;
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+.state-box.active {
+  border-color: var(--c-text-main);
+  font-weight: 600;
+}
+
+/* ── Power section ── */
+.power-section {
+  margin-top: 16px;
+  border-top: 2px solid var(--c-border);
+  padding-top: 14px;
+  display: flex;
+  gap: 24px;
+  align-items: center;
+}
+.power-box {
+  border: 1px solid var(--c-border);
+  padding: 8px 14px;
+}
+.power-label {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+}
+.power-detail {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--c-text-sub);
+  margin-top: 2px;
+}
+.power-arrow {
+  font-size: 16px;
+  color: var(--c-text-mute);
+}
+
+/* ── Legend ── */
+.legend {
+  margin-top: 16px;
+  border-top: 1px solid var(--c-border);
+  padding-top: 12px;
+  display: flex;
+  gap: 20px;
+  font-size: 10px;
+  color: var(--c-text-sub);
+}
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.legend-line {
+  width: 24px;
+  border-top: 1px solid var(--c-border-dark);
+}
+.legend-line-dashed {
+  width: 24px;
+  border-top: 1px dashed var(--c-border-dark);
+}
+
+/* ── Flow labels ── */
+.flow-label {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--c-text-mute);
+  text-align: center;
+  margin: 1px 0;
+}
+</style>
+</head>
+<body>
+<div class="diagram-canvas">
+  <div class="diagram-header">
+    <h1 class="diagram-title">XS-XLD5 V3.0 大路灯控制板 — ESP32-C3 系统数据流图</h1>
+    <p class="diagram-subtitle">DATA FLOW: PHYSICAL INPUTS &rarr; MCU PROCESSING &rarr; PHYSICAL OUTPUTS</p>
+  </div>
+
+  <!-- ══════════ Main 3-Column System ══════════ -->
+  <div class="system-row">
+
+    <!-- ── Left: Physical Inputs ── -->
+    <div class="col-section">
+      <div class="col-title">物理输入 / BUTTONS</div>
+
+      <div class="btn-box">
+        <div class="btn-name">开关键</div>
+        <div class="btn-gpio">GPIO4</div>
+        <div class="btn-ops">短按 — 上下灯总开关</div>
+      </div>
+
+      <div class="btn-box">
+        <div class="btn-name">上灯键</div>
+        <div class="btn-gpio">GPIO5</div>
+        <div class="btn-ops">短按 — 上灯开/关<br>长按 — 无级调光<br>双击 — 最暗&harr;最亮</div>
+      </div>
+
+      <div class="btn-box">
+        <div class="btn-name">下灯键</div>
+        <div class="btn-gpio">GPIO6</div>
+        <div class="btn-ops">短按 — 下灯开/关<br>长按 — 无级调光<br>双击 — 最暗&harr;最亮</div>
+      </div>
+
+      <div class="btn-box">
+        <div class="btn-name">阅读键</div>
+        <div class="btn-gpio">GPIO7</div>
+        <div class="btn-ops">短按 — 阅读模式<br>上下灯 100%</div>
+      </div>
+
+      <div class="btn-box">
+        <div class="btn-name">夜灯键</div>
+        <div class="btn-gpio">GPIO8</div>
+        <div class="btn-ops">短按 — 夜灯模式<br>上灯 5% / 下灯灭<br>30min 自动关</div>
+      </div>
+    </div>
+
+    <!-- ── Center: ESP32-C3 ── -->
+    <div class="col-section">
+      <div class="col-title">ESP32-C3 (RISC-V 160MHz)</div>
+
+      <div class="mcu-outline">
+        <div class="mcu-label">ESP32-C3 SoC</div>
+        <div class="mcu-inner">
+
+          <!-- HW: GPIO Input -->
+          <div class="mcu-hw">
+            <div class="mcu-label-inline">GPIO Input &times; 5</div>
+            <div class="mcu-detail">轮询扫描 10ms<br>GPIO4/5/6/7/8 &rarr; button_task</div>
+          </div>
+
+          <div class="arrow-down">&darr;</div>
+
+          <!-- SW: Button Task -->
+          <div class="mcu-sw box-accent">
+            <div class="mcu-label-inline">button_task <span style="font-weight:400;color:var(--c-text-sub)">(FreeRTOS pri=5)</span></div>
+            <div class="mcu-detail">消抖 20ms &rarr; 时序判定<br>
+              &bull; 短按: &lt;800ms 释放<br>
+              &bull; 长按: &ge;800ms (start / release)<br>
+              &bull; 双击: 300ms 内二次按下<br>
+              &rarr; xQueueSend(system_msg_t)</div>
+          </div>
+
+          <div class="arrow-down">&darr; <span class="arrow-label">system_msg_t {type, btn_id, btn_evt, ...}</span></div>
+
+          <!-- SW: Event Queue -->
+          <div class="mcu-sw">
+            <div class="mcu-label-inline">Event Queue</div>
+            <div class="mcu-detail">FreeRTOS Queue &middot; 统一事件缓冲<br>
+              system_msg_t { type, btn_id, btn_evt, cmd_id, lamp_id, value }</div>
+          </div>
+
+          <div class="arrow-down">&darr; <span class="arrow-label">xQueueReceive</span></div>
+
+          <!-- SW: State Machine -->
+          <div class="mcu-sw box-accent">
+            <div class="mcu-label-inline">lamp_task — 状态机 <span style="font-weight:400;color:var(--c-text-sub)">(pri=7)</span></div>
+            <div class="mcu-detail">
+              <div style="display:flex;gap:6px;justify-content:center;margin:6px 0;">
+                <div class="state-box">SYSTEM_OFF</div>
+                <div style="font-size:12px;color:var(--c-text-mute);align-self:center;">&harr; 开关键</div>
+                <div class="state-box active">NORMAL</div>
+              </div>
+              <div style="display:flex;gap:6px;justify-content:center;">
+                <div class="state-box">READING</div>
+                <div style="font-size:10px;color:var(--c-text-mute);align-self:center;">&harr; 任意键退出</div>
+                <div class="state-box">NIGHT</div>
+              </div>
+              <div style="text-align:center;margin-top:4px;font-size:9px;color:var(--c-text-mute);">
+                NIGHT &rarr; 30min 超时 &rarr; SYSTEM_OFF
+              </div>
+            </div>
+          </div>
+
+          <div class="arrow-down">&darr; <span class="arrow-label">状态转移 &rarr; 动作分发</span></div>
+
+          <!-- SW: Action Branches -->
+          <div class="branch-row">
+            <div class="branch-box">
+              <div class="branch-title">PWM Driver</div>
+              <div class="branch-detail">LEDC fade<br>缓起 1.5s<br>缓灭 1.0s<br>调光步进 20ms</div>
+            </div>
+            <div class="branch-box">
+              <div class="branch-title">Indicator Ctl</div>
+              <div class="branch-detail">GPIO 输出<br>5 LED 状态<br>跟随系统状态</div>
+            </div>
+            <div class="branch-box">
+              <div class="branch-title">NVS Storage</div>
+              <div class="branch-detail">亮度/开关<br>写入 Flash<br>松开/关灯时写</div>
+            </div>
+            <div class="branch-box">
+              <div class="branch-title">FastBee MQTT</div>
+              <div class="branch-detail">property/post<br>function/get<br>function/post<br>info/post</div>
+            </div>
+          </div>
+
+          <div class="arrow-down">&darr;</div>
+
+          <!-- HW: Peripherals -->
+          <div class="hw-row">
+            <div class="hw-box">
+              <div class="hw-title">LEDC</div>
+              <div class="hw-detail">CH0+CH1<br>10bit 1kHz</div>
+            </div>
+            <div class="hw-box">
+              <div class="hw-title">GPIO Out</div>
+              <div class="hw-detail">5 pins<br>9/10/18/19/20</div>
+            </div>
+            <div class="hw-box">
+              <div class="hw-title">SPI Flash</div>
+              <div class="hw-detail">NVS<br>4MB</div>
+            </div>
+            <div class="hw-box">
+              <div class="hw-title">Wi-Fi</div>
+              <div class="hw-detail">FastBee MQTT<br>1883/tcp</div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Right: Physical Outputs ── -->
+    <div class="col-section">
+      <div class="col-title">物理输出 / OUTPUTS</div>
+
+      <div class="out-box">
+        <div class="out-arrow"></div>
+        <div class="out-name">上灯 MOSFET</div>
+        <div class="out-gpio">GPIO2 (LEDC CH0)</div>
+        <div class="out-detail">PWM &rarr; 栅极 &rarr; N-MOSFET<br>驱动 24V LED 负载<br>最大功率 40W</div>
+      </div>
+
+      <div class="out-box">
+        <div class="out-arrow"></div>
+        <div class="out-name">下灯 MOSFET</div>
+        <div class="out-gpio">GPIO3 (LEDC CH1)</div>
+        <div class="out-detail">PWM &rarr; 栅极 &rarr; N-MOSFET<br>驱动 24V LED 负载<br>最大功率 60W</div>
+      </div>
+
+      <div class="out-box">
+        <div class="out-arrow"></div>
+        <div class="out-name">指示灯 &times; 5</div>
+        <div class="out-gpio">GPIO9/10/18/19/20</div>
+        <div class="out-detail">开关键 LED<br>上灯键 LED<br>下灯键 LED<br>阅读键 LED<br>夜灯键 LED</div>
+      </div>
+
+      <div class="out-box">
+        <div class="out-arrow"></div>
+        <div class="out-name">FastBee Cloud</div>
+        <div class="out-gpio">Wi-Fi (MQTT 1883)</div>
+        <div class="out-detail">property/post &rarr; 亮度上报<br>function/get &rarr; 平台指令<br>function/post &rarr; 开关/模式回复<br>info/post &rarr; 设备在线状态</div>
+      </div>
+
+      <div class="out-box">
+        <div class="out-arrow"></div>
+        <div class="out-name">蜂鸣器 (可选)</div>
+        <div class="out-gpio">GPIO21</div>
+        <div class="out-detail">按键反馈音<br>预留扩展</div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ══════════ Power Section ══════════ -->
+  <div class="power-section">
+    <div class="power-box">
+      <div class="power-label">DC 24V / 4A</div>
+      <div class="power-detail">外部电源输入</div>
+    </div>
+    <div class="power-arrow">&rarr;</div>
+    <div class="power-box">
+      <div class="power-label">DC-DC 降压</div>
+      <div class="power-detail">24V &rarr; 3.3V LDO</div>
+    </div>
+    <div class="power-arrow">&rarr;</div>
+    <div class="power-box">
+      <div class="power-label">ESP32-C3 VDD</div>
+      <div class="power-detail">3.3V 供电</div>
+    </div>
+    <div style="flex:1;"></div>
+    <div class="power-box">
+      <div class="power-label">24V 总线</div>
+      <div class="power-detail">&rarr; LED 灯板 (via MOSFET)<br>上灯 40W + 下灯 60W</div>
+    </div>
+  </div>
+
+  <!-- ══════════ Legend ══════════ -->
+  <div class="legend">
+    <div class="legend-item">
+      <div class="legend-line"></div>
+      <span>数据流 / 控制信号</span>
+    </div>
+    <div class="legend-item">
+      <span style="font-family:var(--font-mono);">&darr;</span>
+      <span>FreeRTOS 任务间通信</span>
+    </div>
+    <div class="legend-item">
+      <span style="font-family:var(--font-mono);">&harr;</span>
+      <span>状态转移</span>
+    </div>
+    <div class="legend-item">
+      <span style="font-size:10px;color:var(--c-accent);">GPIOxx</span>
+      <span>引脚编号</span>
+    </div>
+    <div class="legend-item" style="margin-left:auto;">
+      <span>规格书: XS-XLD5 V3.0 | MCU: ESP32-C3 | 框架: ESP-IDF + FreeRTOS</span>
+    </div>
+  </div>
+
+</div>
+</body>
+</html>
