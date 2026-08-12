@@ -1,0 +1,22 @@
+# ESP32-C3 默认配置 — 编译时可通过 idf.py menuconfig 覆盖
+
+# Flash 大小 4MB
+CONFIG_ESPTOOLPY_FLASHSIZE_4MB=y
+
+# FreeRTOS 心跳频率 1000Hz (1ms tick) — 调光和按键时序需要毫秒精度
+CONFIG_FREERTOS_HZ=1000
+
+# 启用 FreeRTOS 递归互斥锁 (状态机用到)
+CONFIG_FREERTOS_ENABLE_RECURSIVE_MUTEX=y
+
+# Wi-Fi 配置
+CONFIG_ESP_WIFI_ENABLED=y
+
+# MQTT 最大 broker URI 长度
+CONFIG_MQTT_TASK_STACK_SIZE=6144
+
+# 分区表 — 默认含 NVS, 适合本项目
+CONFIG_PARTITION_TABLE_SINGLE_APP=y
+
+# 日志级别 (开发时用 Verbose/Debug, 量产改 Info/Warning)
+CONFIG_LOG_DEFAULT_LEVEL_INFO=y
