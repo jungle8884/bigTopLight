@@ -355,100 +355,100 @@ static void handle_command(command_id_t cmd, lamp_id_t lamp, int32_t value)
 {
     switch (cmd) {
 
-    case CMD_POWER_TOGGLE:
-        /* 总开关: OFF → ON, 其他 → OFF */
-        if (s_state == STATE_OFF) {
-            do_power_on(); // OFF → NORMAL，两灯缓起到记忆亮度
-        } else {
-            do_power_off(); // 任意状态 → OFF，缓灭 + 保存状态到 NVS
-        }
-        break;
-
-    case CMD_LAMP_TOGGLE:
-        /* 单灯开关: value=1 开, value=0 关 */
-        if (s_state == STATE_OFF) {
-            do_power_on();  /* 系统关时先开机 */
-        }
-        if (s_state == STATE_NORMAL) {
-            bool *sw = (lamp == LAMP_UPPER) ? &s_status.switch_upper : &s_status.switch_lower; // 指向 switch_upper 或 switch_lower
-            uint8_t *br = (lamp == LAMP_UPPER) ? &s_status.bright_upper : &s_status.bright_lower; // 指向 bright_upper 或 bright_lower
-            *sw = (value != 0);
-            if (*sw) {
-                pwm_set_brightness(lamp, *br, FADE_IN_TIME_MS); // 开：缓起
+        case CMD_POWER_TOGGLE:
+            /* 总开关: OFF → ON, 其他 → OFF */
+            if (s_state == STATE_OFF) {
+                do_power_on(); // OFF → NORMAL，两灯缓起到记忆亮度
             } else {
-                pwm_turn_off(lamp, FADE_OUT_TIME_MS); // 关：缓灭
+                do_power_off(); // 任意状态 → OFF，缓灭 + 保存状态到 NVS
             }
-            notify_change();
-        }
-        /**
-         * 关键设计：
-            系统关时先开机：云端发 switch_upper=1 而系统处于 OFF，会自动先开机再开灯
-            仅在 NORMAL 模式生效：阅读/夜灯模式下忽略单灯开关，避免破坏模式一致性
-        */
-        break;
+            break;
 
-    case CMD_SET_BRIGHTNESS:
-        /* 设置亮度: value=0~100, 仅在正常模式生效 */
-        if (s_state == STATE_NORMAL) {
-            uint8_t b = (uint8_t)value;
-            if (b > 100) b = 100;
-            // 更新状态 + PWM（仅灯开着时才驱动 PWM）
-            if (lamp == LAMP_UPPER) {
-                s_status.bright_upper = b;
-                if (s_status.switch_upper) {
-                    pwm_set_brightness(LAMP_UPPER, b, MODE_FADE_TIME_MS);
-                }
-            } else {
-                s_status.bright_lower = b;
-                if (s_status.switch_lower) {
-                    pwm_set_brightness(LAMP_LOWER, b, MODE_FADE_TIME_MS);
-                }
+        case CMD_LAMP_TOGGLE:
+            /* 单灯开关: value=1 开, value=0 关 */
+            if (s_state == STATE_OFF) {
+                do_power_on();  /* 系统关时先开机 */
             }
-            storage_save_brightness(lamp, b);
-            notify_change();
-        }
-        /**
-         * 关键设计：
-            灯关时只存不亮：更新亮度值到 s_status 并存入 NVS，但不驱动 PWM，下次开灯时使用新亮度
-            立即存储：亮度变更实时写入 NVS，断电不丢失
-        */
-        break;
+            if (s_state == STATE_NORMAL) {
+                bool *sw = (lamp == LAMP_UPPER) ? &s_status.switch_upper : &s_status.switch_lower; // 指向 switch_upper 或 switch_lower
+                uint8_t *br = (lamp == LAMP_UPPER) ? &s_status.bright_upper : &s_status.bright_lower; // 指向 bright_upper 或 bright_lower
+                *sw = (value != 0);
+                if (*sw) {
+                    pwm_set_brightness(lamp, *br, FADE_IN_TIME_MS); // 开：缓起
+                } else {
+                    pwm_turn_off(lamp, FADE_OUT_TIME_MS); // 关：缓灭
+                }
+                notify_change();
+            }
+            /**
+             * 关键设计：
+                系统关时先开机：云端发 switch_upper=1 而系统处于 OFF，会自动先开机再开灯
+                仅在 NORMAL 模式生效：阅读/夜灯模式下忽略单灯开关，避免破坏模式一致性
+            */
+            break;
 
-    case CMD_SET_MODE:
-        /* 设置工作模式: 0=normal, 1=reading, 2=night */
-        if (s_state == STATE_OFF) { // 关机状态不允许切模式
-            ESP_LOGW(TAG, "cannot set mode while OFF");
-            break;
-        }
-        switch (value) {
-            case 0:  /* normal */
-                if (s_state != STATE_NORMAL) {
-                    do_exit_special(); // 退出阅读/夜灯模式，恢复快照状态
+        case CMD_SET_BRIGHTNESS:
+            /* 设置亮度: value=0~100, 仅在正常模式生效 */
+            if (s_state == STATE_NORMAL) {
+                uint8_t b = (uint8_t)value;
+                if (b > 100) b = 100;
+                // 更新状态 + PWM（仅灯开着时才驱动 PWM）
+                if (lamp == LAMP_UPPER) {
+                    s_status.bright_upper = b;
+                    if (s_status.switch_upper) {
+                        pwm_set_brightness(LAMP_UPPER, b, MODE_FADE_TIME_MS);
+                    }
+                } else {
+                    s_status.bright_lower = b;
+                    if (s_status.switch_lower) {
+                        pwm_set_brightness(LAMP_LOWER, b, MODE_FADE_TIME_MS);
+                    }
                 }
+                storage_save_brightness(lamp, b);
+                notify_change();
+            }
+            /**
+             * 关键设计：
+                灯关时只存不亮：更新亮度值到 s_status 并存入 NVS，但不驱动 PWM，下次开灯时使用新亮度
+                立即存储：亮度变更实时写入 NVS，断电不丢失
+            */
             break;
-            case 1:  /* reading */
-                if (s_state != STATE_READING) {
-                    if (s_state != STATE_NORMAL) do_exit_special(); // 先退出夜灯模式，恢复快照到 NORMAL
-                    do_enter_reading(); //  再从 NORMAL 进入阅读模式，保存新快照
-                }
+
+        case CMD_SET_MODE:
+            /* 设置工作模式: 0=normal, 1=reading, 2=night */
+            if (s_state == STATE_OFF) { // 关机状态不允许切模式
+                ESP_LOGW(TAG, "cannot set mode while OFF");
+                break;
+            }
+            switch (value) {
+                case 0:  /* normal */
+                    if (s_state != STATE_NORMAL) {
+                        do_exit_special(); // 退出阅读/夜灯模式，恢复快照状态
+                    }
+                break;
+                case 1:  /* reading */
+                    if (s_state != STATE_READING) {
+                        if (s_state != STATE_NORMAL) do_exit_special(); // 先退出夜灯模式，恢复快照到 NORMAL
+                        do_enter_reading(); //  再从 NORMAL 进入阅读模式，保存新快照
+                    }
+                break;
+                case 2:  /* night */
+                    if (s_state != STATE_NIGHT) {
+                        if (s_state != STATE_NORMAL) do_exit_special(); // 先退出阅读，恢复快照到 NORMAL
+                        do_enter_night(); // 再从 NORMAL 进入夜灯，保存新快照
+                    }
+                break;
+            }
+            /**
+             * 关键设计：
+                OFF 状态拒绝切换：必须先开机
+                特殊模式互斥：从阅读切夜灯（或反向），必须先 do_exit_special() 恢复快照，再进入新模式
+                do_exit_special() 恢复进入特殊模式前保存的 s_snapshot，确保状态一致性
+                do_enter_night() 自动启动 30 分钟定时器，超时后自动关机
+            */
             break;
-            case 2:  /* night */
-                if (s_state != STATE_NIGHT) {
-                    if (s_state != STATE_NORMAL) do_exit_special(); // 先退出阅读，恢复快照到 NORMAL
-                    do_enter_night(); // 再从 NORMAL 进入夜灯，保存新快照
-                }
+        default:
             break;
-        }
-        /**
-         * 关键设计：
-            OFF 状态拒绝切换：必须先开机
-            特殊模式互斥：从阅读切夜灯（或反向），必须先 do_exit_special() 恢复快照，再进入新模式
-            do_exit_special() 恢复进入特殊模式前保存的 s_snapshot，确保状态一致性
-            do_enter_night() 自动启动 30 分钟定时器，超时后自动关机
-        */
-        break;
-    default:
-        break;
     }
     /**
      * handle_command()
