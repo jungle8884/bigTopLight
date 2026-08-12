@@ -471,20 +471,20 @@ static void handle_timer(timer_id_t timer_id)
 {
     switch (timer_id) {
 
-    case TIMER_NIGHT_LAMP:
-        /* 夜灯 30 分钟超时 → 自动关灯 */
-        ESP_LOGI(TAG, "night lamp timeout → power off");
-        pwm_turn_off(LAMP_UPPER, FADE_OUT_TIME_MS);
-        pwm_turn_off(LAMP_LOWER, FADE_OUT_TIME_MS);
-        s_status.switch_upper = false;
-        s_status.switch_lower = false;
-        s_state = STATE_OFF;
-        storage_save_switch_state(false, false);
-        notify_change();
-        break;
+        case TIMER_NIGHT_LAMP:
+            /* 夜灯 30 分钟超时 → 自动关灯 */
+            ESP_LOGI(TAG, "night lamp timeout → power off");
+            pwm_turn_off(LAMP_UPPER, FADE_OUT_TIME_MS);
+            pwm_turn_off(LAMP_LOWER, FADE_OUT_TIME_MS);
+            s_status.switch_upper = false;
+            s_status.switch_lower = false;
+            s_state = STATE_OFF;
+            storage_save_switch_state(false, false);
+            notify_change();
+            break;
 
-    default:
-        break;
+        default:
+            break;
     }
 }
 
