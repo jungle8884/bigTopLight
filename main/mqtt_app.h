@@ -64,4 +64,6 @@ void mqtt_app_start(void);
  */
 void mqtt_publish_state(const lamp_status_t *status, system_state_t state);
 
+void mqtt_publish_brightness(lamp_id_t lamp, uint8_t brightness);
+
 #endif /* MQTT_APP_H */

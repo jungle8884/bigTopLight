@@ -326,19 +326,21 @@ void mqtt_publish_state(const lamp_status_t *status, system_state_t state)
      * 物模型中这两个定义为"属性"类型，平台会存储历史并展示图表 */
     cJSON *prop_arr = cJSON_CreateArray();
 
-    /* 上灯亮度 */
+    /* 上灯亮度 (开关关时上报 0) */
     char buf[8];
+    uint8_t actual_upper = status->switch_upper ? status->bright_upper : 0;
     cJSON *p_bu = cJSON_CreateObject();
     cJSON_AddStringToObject(p_bu, "id", FB_PROP_BRIGHT_UPPER);
-    snprintf(buf, sizeof(buf), "%u", (unsigned)status->bright_upper);
+    snprintf(buf, sizeof(buf), "%u", (unsigned)actual_upper);
     cJSON_AddStringToObject(p_bu, "value", buf);
     cJSON_AddStringToObject(p_bu, "remark", "");
     cJSON_AddItemToArray(prop_arr, p_bu);
 
-    /* 下灯亮度 */
+    /* 下灯亮度 (开关关时上报 0) */
+    uint8_t actual_lower = status->switch_lower ? status->bright_lower : 0;
     cJSON *p_bl = cJSON_CreateObject();
     cJSON_AddStringToObject(p_bl, "id", FB_PROP_BRIGHT_LOWER);
-    snprintf(buf, sizeof(buf), "%u", (unsigned)status->bright_lower);
+    snprintf(buf, sizeof(buf), "%u", (unsigned)actual_lower);
     cJSON_AddStringToObject(p_bl, "value", buf);
     cJSON_AddStringToObject(p_bl, "remark", "");
     cJSON_AddItemToArray(prop_arr, p_bl);
@@ -399,4 +401,32 @@ void mqtt_publish_state(const lamp_status_t *status, system_state_t state)
         free(func_str);
     }
     cJSON_Delete(func_arr);
+}
+
+void mqtt_publish_brightness(lamp_id_t lamp, uint8_t brightness)
+{
+     if (!s_client) return;
+     if (lamp >= LAMP_COUNT) return;
+
+     const char* prop_id = (lamp == LAMP_UPPER) 
+                            ? FB_PROP_BRIGHT_UPPER 
+                            : FB_PROP_BRIGHT_LOWER;
+    
+    cJSON* prop_arr = cJSON_CreateArray();
+    cJSON* item = cJSON_CreateObject();
+    cJSON_AddStringToObject(item, "id", prop_id);
+
+    char buf[8];
+    snprintf(buf, sizeof(buf), "%u", (unsigned)brightness);
+    cJSON_AddStringToObject(item, "value", buf);
+    cJSON_AddStringToObject(item, "remark", "亮度值");
+    cJSON_AddItemToArray(prop_arr, item);
+
+    char* prop_str = cJSON_PrintUnformatted(prop_arr);
+    if (prop_str) {
+        esp_mqtt_client_publish(s_client, s_topic_property_post, prop_str, 0, 1, 0);
+        ESP_LOGD(TAG, "property post: %s", prop_str);
+        free(prop_str);
+    }
+    cJSON_Delete(prop_arr);
 }
