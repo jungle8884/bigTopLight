@@ -41,11 +41,11 @@
 
 typedef enum {
     BTN_POWER = 0,      /* 开关键 */
-    BTN_UPPER,           /* 上灯键 */
-    BTN_LOWER,           /* 下灯键 */
-    BTN_READING,         /* 阅读键 */
-    BTN_NIGHT,           /* 夜灯键 */
-    BTN_COUNT            /* 按键总数, 用于数组索引 */
+    BTN_UPPER,          /* 上灯键 */
+    BTN_LOWER,          /* 下灯键 */
+    BTN_READING,        /* 阅读键 */
+    BTN_NIGHT,          /* 夜灯键 */
+    BTN_COUNT           /* 按键总数, 用于数组索引 */
 } button_id_t;
 
 /* 按键事件类型 */
@@ -72,7 +72,7 @@ typedef enum {
 
 typedef enum {
     STATE_OFF = 0,      /* 全关: 上下灯均灭 */
-    STATE_NORMAL,        /* 正常模式: 独立控制上下灯 */
+    STATE_NORMAL,       /* 正常模式: 独立控制上下灯 */
     STATE_READING,      /* 阅读模式: 上下灯均 100% */
     STATE_NIGHT,        /* 夜灯模式: 上灯 5%, 下灯灭, 30min 定时 */
 } system_state_t;
@@ -172,27 +172,32 @@ typedef struct {
 #define BUTTON_POLL_MS          10      /* 按键扫描间隔 10ms */
 
 /* ═══════════════════════════════════════════════════
- * Wi-Fi 配置 (★ 需修改为实际参数)
+ * Wi-Fi 配网参数
+ *
+ * WiFi 凭据通过 SmartConfig (ESP-TOUCH) 获取，存储在 NVS 中
+ * 不再硬编码 SSID/密码
  * ═══════════════════════════════════════════════════ */
 
-#define WIFI_SSID               "jungle"
-#define WIFI_PASSWORD           "java711c"
+#define WIFI_MAX_RETRY          5       /* 直接连接最大重试次数 */
 
 /* ═══════════════════════════════════════════════════
- * FastBee 物联网平台配置 (★ 需在平台注册后修改)
- *   1. 在 FastBee 平台创建产品，选择: 直连设备 + MQTT + JSON + 简单认证
- *   2. 将下方宏填入平台生成的参数
- *   3. 设备编号(deviceNum) 在平台添加设备后获得
+ * FastBee 物联网平台配置
+ *   产品级参数 (编译时固定):
+ *     - 在 FastBee 平台创建产品，选择: 直连设备 + MQTT + JSON + 简单认证
+ *     - 将下方宏填入平台生成的产品级参数
+ *   设备级参数 (配网时动态获取，存 NVS):
+ *     - userId: App 下发，标识设备归属的用户
+ *     - deviceNum: App 下发或由 MAC 地址自动生成
+ *   配网流程: 设备 AP 模式 → App 下发 → 存 NVS → 连 WiFi → 连 MQTT
  * ═══════════════════════════════════════════════════ */
 
-#define FB_MQTT_HOST            "你的服务器ip"     /* MQTT 服务器地址 */
+#define FB_MQTT_HOST            "81.71.99.53"      /* MQTT 服务器地址 */
 #define FB_MQTT_PORT            1883               /* MQTT 端口 (TLS=8883) */
 #define FB_PRODUCT_ID           "136"              /* 产品编号 */
-#define FB_DEVICE_NUM           "D1088N947N1G"        /* 设备编号 */
-#define FB_USER_ID              "1"               /* 用户ID */
 #define FB_MQTT_USERNAME        "FastBee"          /* 认证账号 */
-#define FB_MQTT_PASSWORD        "你的认证密码" /* 认证密码 */
+#define FB_MQTT_PASSWORD        "P55WMKIT5563GT7Z" /* 认证密码 */
 #define FB_FIRMWARE_VERSION     "1.0"             /* 固件版本 */
+/* FB_DEVICE_NUM 和 FB_USER_ID 不再硬编码，由 AP 配网时 App 下发，存入 NVS */
 
 /* 物模型标识 — 必须与 FastBee 平台物模型定义一致 */
 #define FB_PROP_POWER           "power"            /* 总开关: "1"=开 "0"=关 */

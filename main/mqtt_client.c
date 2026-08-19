@@ -10,6 +10,7 @@
  *                                      → MQTT function/post  (功能: 开关/模式)
  */
 #include "mqtt_app.h"          /* 本模块接口 */
+#include "storage.h"           /* NVS 读取 deviceNum/userId */
 #include "state_machine.h"
 #include "esp_log.h"
 #include "esp_event.h"         /* esp_event_base_t, ESP_EVENT_ANY_ID */
@@ -36,6 +37,8 @@ static const char *s_lwt_msg = "{\"status\":4}";
 
 /* ── ClientId: S&{deviceNum}&{productId}&{userId} ── */
 static char s_client_id[64];
+static char s_device_num[33];         /* 从 NVS 读取的设备编号 */
+static char s_user_id[16];            /* 从 NVS 读取的用户 ID */
 
 /* ── MQTT broker URI ── */
 static char s_broker_uri[64];
@@ -56,7 +59,7 @@ static void publish_device_info(void)
     cJSON_AddNumberToObject(root, "rssi", rssi); 
     cJSON_AddStringToObject(root, "firmwareVersion", FB_FIRMWARE_VERSION);
     cJSON_AddNumberToObject(root, "status", 3);  /* 3=在线 */
-    cJSON_AddStringToObject(root, "userId", FB_USER_ID);
+    cJSON_AddStringToObject(root, "userId", s_user_id);
     cJSON_AddNumberToObject(root, "longitude", 0);
     cJSON_AddNumberToObject(root, "latitude", 0);
 
@@ -251,9 +254,16 @@ static void mqtt_event_handler(void *arg, esp_event_base_t base,
 
 void mqtt_app_start(void)
 {
+    /* 从 NVS 读取设备信息 (AP 配网时存入) */
+    char auth_code[33] = {0};
+    if (!storage_load_device_info(s_user_id, s_device_num, auth_code)) {
+        ESP_LOGE(TAG, "No device info in NVS, AP config not done?");
+        return;
+    }
+    
     /* 拼接 FastBee 主题前缀: /{productId}/{deviceNum} */
     snprintf(s_topic_prefix, sizeof(s_topic_prefix),
-             "/%s/%s", FB_PRODUCT_ID, FB_DEVICE_NUM);
+             "/%s/%s", FB_PRODUCT_ID, s_device_num);
 
     /* 拼接完整主题字符串 */
     snprintf(s_topic_property_post, sizeof(s_topic_property_post),
@@ -267,14 +277,14 @@ void mqtt_app_start(void)
 
     /* 拼接 ClientId: S&{deviceNum}&{productId}&{userId} */
     snprintf(s_client_id, sizeof(s_client_id),
-             "S&%s&%s&%s", FB_DEVICE_NUM, FB_PRODUCT_ID, FB_USER_ID);
+             "S&%s&%s&%s", s_device_num, FB_PRODUCT_ID, s_user_id);
 
     /* 拼接 broker URI */
     snprintf(s_broker_uri, sizeof(s_broker_uri),
              "mqtt://%s:%d", FB_MQTT_HOST, FB_MQTT_PORT);
 
     ESP_LOGI(TAG, "FastBee config: broker=%s clientId=%s device=%s",
-             s_broker_uri, s_client_id, FB_DEVICE_NUM);
+             s_broker_uri, s_client_id, s_device_num);
 
     /* MQTT 客户端配置 (ESP-IDF v5.4 结构体) */
     esp_mqtt_client_config_t mqtt_cfg = {

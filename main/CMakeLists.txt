@@ -11,12 +11,14 @@ idf_component_register(
         "timer.c"
         "state_machine.c"
         "mqtt_client.c"
+        "wifi_app.c"
     INCLUDE_DIRS
         "."
     REQUIRES
         nvs_flash
         esp_timer
         esp_wifi
+        esp_http_server
         mqtt
         driver
         json
