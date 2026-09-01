@@ -43,7 +43,7 @@ void timer_init(void)
         .callback = dim_timer_callback,
         .name     = "dim_timer",
     };
-    esp_timer_create(&dim_args, &s_dim_timer);
+    esp_timer_create(&dim_args, &s_dim_timer); 
 
     /* 创建夜灯超时定时器 (单次) */
     esp_timer_create_args_t night_args = {

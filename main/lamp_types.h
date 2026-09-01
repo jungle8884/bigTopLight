@@ -185,13 +185,13 @@ typedef struct {
  *   3. 设备编号(deviceNum) 在平台添加设备后获得
  * ═══════════════════════════════════════════════════ */
 
-#define FB_MQTT_HOST            "你的服务器ip"     /* MQTT 服务器地址 */
+#define FB_MQTT_HOST            "81.71.99.53"     /* MQTT 服务器地址 */
 #define FB_MQTT_PORT            1883               /* MQTT 端口 (TLS=8883) */
 #define FB_PRODUCT_ID           "136"              /* 产品编号 */
 #define FB_DEVICE_NUM           "D1088N947N1G"        /* 设备编号 */
 #define FB_USER_ID              "1"               /* 用户ID */
 #define FB_MQTT_USERNAME        "FastBee"          /* 认证账号 */
-#define FB_MQTT_PASSWORD        "你的认证密码" /* 认证密码 */
+#define FB_MQTT_PASSWORD        "P55WMKIT5563GT7Z" /* 认证密码 */
 #define FB_FIRMWARE_VERSION     "1.0"             /* 固件版本 */
 
 /* 物模型标识 — 必须与 FastBee 平台物模型定义一致 */

@@ -362,35 +362,35 @@ void mqtt_publish_state(const lamp_status_t *status, system_state_t state)
     cJSON *f_power = cJSON_CreateObject();
     cJSON_AddStringToObject(f_power, "id", FB_PROP_POWER);
     cJSON_AddStringToObject(f_power, "value", (state != STATE_OFF) ? "1" : "0");
-    cJSON_AddStringToObject(f_power, "remark", "");
+    cJSON_AddStringToObject(f_power, "remark", "总开关");
     cJSON_AddItemToArray(func_arr, f_power);
 
     /* 模式 */
     const char *mode_str = MODE_STR_OFF;
     switch (state) {
-    case STATE_OFF:     mode_str = MODE_STR_OFF;     break;
-    case STATE_NORMAL:  mode_str = MODE_STR_NORMAL;  break;
-    case STATE_READING: mode_str = MODE_STR_READING; break;
-    case STATE_NIGHT:   mode_str = MODE_STR_NIGHT;   break;
+        case STATE_OFF:     mode_str = MODE_STR_OFF;     break;
+        case STATE_NORMAL:  mode_str = MODE_STR_NORMAL;  break;
+        case STATE_READING: mode_str = MODE_STR_READING; break;
+        case STATE_NIGHT:   mode_str = MODE_STR_NIGHT;   break;
     }
     cJSON *f_mode = cJSON_CreateObject();
     cJSON_AddStringToObject(f_mode, "id", FB_PROP_MODE);
     cJSON_AddStringToObject(f_mode, "value", mode_str);
-    cJSON_AddStringToObject(f_mode, "remark", "");
+    cJSON_AddStringToObject(f_mode, "remark", "模式");
     cJSON_AddItemToArray(func_arr, f_mode);
 
     /* 上灯开关 */
     cJSON *f_su = cJSON_CreateObject();
     cJSON_AddStringToObject(f_su, "id", FB_PROP_SWITCH_UPPER);
     cJSON_AddStringToObject(f_su, "value", status->switch_upper ? "1" : "0");
-    cJSON_AddStringToObject(f_su, "remark", "");
+    cJSON_AddStringToObject(f_su, "remark", "上灯开关");
     cJSON_AddItemToArray(func_arr, f_su);
 
     /* 下灯开关 */
     cJSON *f_sl = cJSON_CreateObject();
     cJSON_AddStringToObject(f_sl, "id", FB_PROP_SWITCH_LOWER);
     cJSON_AddStringToObject(f_sl, "value", status->switch_lower ? "1" : "0");
-    cJSON_AddStringToObject(f_sl, "remark", "");
+    cJSON_AddStringToObject(f_sl, "remark", "下灯开关");
     cJSON_AddItemToArray(func_arr, f_sl);
 
     char *func_str = cJSON_PrintUnformatted(func_arr);

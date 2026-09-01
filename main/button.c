@@ -79,88 +79,88 @@ static void button_process(button_id_t id)
 
     switch (rt->state) {
 
-    /* ── 空闲: 检测按下 ── */
-    case BTN_ST_IDLE:
-        if (pressed) {
-            rt->state = BTN_ST_DEBOUNCE;
-            rt->press_time = now;
-        }
-        break;
-
-    /* ── 消抖: 等 20ms 确认 ── */
-    case BTN_ST_DEBOUNCE:
-        if (now - rt->press_time >= DEBOUNCE_MS) {
+        /* ── 空闲: 检测按下 ── */
+        case BTN_ST_IDLE:
             if (pressed) {
-                /* 确认按下, 进入计时阶段 */
-                rt->state = BTN_ST_PRESSED;
+                rt->state = BTN_ST_DEBOUNCE;
                 rt->press_time = now;
-            } else {
-                /* 消抖期内松开, 判定为抖动 */
-                rt->state = BTN_ST_IDLE;
             }
-        }
-        break;
+            break;
 
-    /* ── 已按下: 判断长按还是短按 ── */
-    case BTN_ST_PRESSED:
-        if (!pressed) {
-            /* 800ms 内释放 → 进入双击等待窗口 */
-            rt->state = BTN_ST_WAIT_DOUBLE;
-            rt->release_time = now;
-        } else if (now - rt->press_time >= LONG_PRESS_THRESHOLD) {
-            /* 超过 800ms 仍按下 → 长按开始 */
-            rt->state = BTN_ST_LONG_PRESS;
-            send_event(id, BTN_EVT_LONG_PRESS_START);
-        }
-        break;
+        /* ── 消抖: 等 20ms 确认 ── */
+        case BTN_ST_DEBOUNCE:
+            if (now - rt->press_time >= DEBOUNCE_MS) {
+                if (pressed) {
+                    /* 确认按下, 进入计时阶段 */
+                    rt->state = BTN_ST_PRESSED;
+                    rt->press_time = now;
+                } else {
+                    /* 消抖期内松开, 判定为抖动 */
+                    rt->state = BTN_ST_IDLE;
+                }
+            }
+            break;
 
-    /* ── 双击等待: 300ms 内是否有第二次按下 ── */
-    case BTN_ST_WAIT_DOUBLE:
-        if (pressed) {
-            /* 窗口内再次按下 → 双击第二次消抖 */
-            rt->state = BTN_ST_DEBOUNCE2;
-            rt->press_time = now;
-        } else if (now - rt->release_time >= DOUBLE_CLICK_WINDOW) {
-            /* 窗口超时, 判定为短按 */
-            send_event(id, BTN_EVT_SHORT_PRESS);
-            rt->state = BTN_ST_IDLE;
-        }
-        break;
-
-    /* ── 双击第二次消抖 ── */
-    case BTN_ST_DEBOUNCE2:
-        if (now - rt->press_time >= DEBOUNCE_MS) {
-            if (pressed) {
-                rt->state = BTN_ST_PRESSED2;
-                rt->press_time = now;
-            } else {
-                /* 抖动, 回退到双击等待 */
+        /* ── 已按下: 判断长按还是短按 ── */
+        case BTN_ST_PRESSED:
+            if (!pressed) {
+                /* 800ms 内释放 → 进入双击等待窗口 */
                 rt->state = BTN_ST_WAIT_DOUBLE;
                 rt->release_time = now;
+            } else if (now - rt->press_time >= LONG_PRESS_THRESHOLD) {
+                /* 超过 800ms 仍按下 → 长按开始 */
+                rt->state = BTN_ST_LONG_PRESS;
+                send_event(id, BTN_EVT_LONG_PRESS_START);
             }
-        }
-        break;
+            break;
 
-    /* ── 双击第二次按下: 等待释放 ── */
-    case BTN_ST_PRESSED2:
-        if (!pressed) {
-            /* 双击确认 */
-            send_event(id, BTN_EVT_DOUBLE_CLICK);
+        /* ── 双击等待: 300ms 内是否有第二次按下 ── */
+        case BTN_ST_WAIT_DOUBLE:
+            if (pressed) {
+                /* 窗口内再次按下 → 双击第二次消抖 */
+                rt->state = BTN_ST_DEBOUNCE2;
+                rt->press_time = now;
+            } else if (now - rt->release_time >= DOUBLE_CLICK_WINDOW) {
+                /* 窗口超时, 判定为短按 */
+                send_event(id, BTN_EVT_SHORT_PRESS);
+                rt->state = BTN_ST_IDLE;
+            }
+            break;
+
+        /* ── 双击第二次消抖 ── */
+        case BTN_ST_DEBOUNCE2:
+            if (now - rt->press_time >= DEBOUNCE_MS) {
+                if (pressed) {
+                    rt->state = BTN_ST_PRESSED2;
+                    rt->press_time = now;
+                } else {
+                    /* 抖动, 回退到双击等待 */
+                    rt->state = BTN_ST_WAIT_DOUBLE;
+                    rt->release_time = now;
+                }
+            }
+            break;
+
+        /* ── 双击第二次按下: 等待释放 ── */
+        case BTN_ST_PRESSED2:
+            if (!pressed) {
+                /* 双击确认 */
+                send_event(id, BTN_EVT_DOUBLE_CLICK);
+                rt->state = BTN_ST_IDLE;
+            }
+            break;
+
+        /* ── 长按持续中: 等待释放 ── */
+        case BTN_ST_LONG_PRESS:
+            if (!pressed) {
+                send_event(id, BTN_EVT_LONG_PRESS_RELEASE);
+                rt->state = BTN_ST_IDLE;
+            }
+            break;
+
+        default:
             rt->state = BTN_ST_IDLE;
-        }
-        break;
-
-    /* ── 长按持续中: 等待释放 ── */
-    case BTN_ST_LONG_PRESS:
-        if (!pressed) {
-            send_event(id, BTN_EVT_LONG_PRESS_RELEASE);
-            rt->state = BTN_ST_IDLE;
-        }
-        break;
-
-    default:
-        rt->state = BTN_ST_IDLE;
-        break;
+            break;
     }
 }
 
