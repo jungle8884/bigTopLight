@@ -12,11 +12,13 @@
  *     /{productId}/{deviceNum}/info/get       — 设备信息查询
  *     /{productId}/{deviceNum}/monitor/get    — 监控控制
  *     /{productId}/{deviceNum}/ntp/get         — NTP 时间同步
+ *     /{deviceNum}/http/upgrade/set           — OTA 升级指令 (注意: 主题格式不同)
  *
  *   发布 (设备上报):
  *     /{productId}/{deviceNum}/property/post  — 属性数据 (bright_upper, bright_lower)
  *     /{productId}/{deviceNum}/function/post  — 功能状态 (power, mode, switch_upper, switch_lower)
  *     /{productId}/{deviceNum}/info/post      — 设备信息 (含在线/离线状态)
+ *     /{deviceNum}/http/upgrade/reply          — OTA 升级回复 (注意: 主题格式不同)
  *
  * ═══ MQTT 认证 (简单模式) ═══
  *   ClientId:  S&{deviceNum}&{productId}&{userId}
@@ -65,5 +67,14 @@ void mqtt_app_start(void);
 void mqtt_publish_state(const lamp_status_t *status, system_state_t state);
 
 void mqtt_publish_brightness(lamp_id_t lamp, uint8_t brightness);
+
+/**
+ * 发布 OTA 升级回复到 FastBee 平台
+ *   - 发布到 upgrade/reply 主题
+ *   - 由 ota_app.c 调用, 上报升级进度和结果
+ *
+ * @param payload JSON 消息体字符串
+ */
+void mqtt_publish_ota_reply(const char *payload);
 
 #endif /* MQTT_APP_H */

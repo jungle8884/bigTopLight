@@ -28,6 +28,7 @@
 #include "esp_wifi.h"
 #include "esp_event.h"
 #include "esp_netif.h"
+#include "esp_ota_ops.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include <string.h>
@@ -53,6 +54,22 @@ void app_main(void)
     ESP_LOGI(TAG, "║ XS-XLD5 V3.0 Lamp Controller       ║");
     ESP_LOGI(TAG, "║ ESP32-C3 | ESP-IDF + FreeRTOS       ║");
     ESP_LOGI(TAG, "╚══════════════════════════════════════╝");
+
+    /* ── 0. OTA 启动验证 ──
+     * 启用 rollback 后, 新固件首次启动处于 pending_verify 状态
+     * 必须主动标记为 valid, 否则下次重启会回退到旧固件 */
+    const esp_partition_t *running = esp_ota_get_running_partition();
+    if (running) {
+        esp_ota_img_states_t state;
+        if (esp_ota_get_state_partition(running, &state) == ESP_OK) {
+            if (state == ESP_OTA_IMG_PENDING_VERIFY) {
+                ESP_LOGI(TAG, "OTA: first boot of new firmware, marking valid");
+                esp_ota_mark_app_valid_cancel_rollback();
+            }
+        }
+        ESP_LOGI(TAG, "Running partition: %s, firmware v%s",
+                 running->label, FB_FIRMWARE_VERSION);
+    }
 
     /* ── 1. 初始化底层网络和事件循环 (Wi-Fi 依赖) ── */
     ESP_ERROR_CHECK(esp_netif_init());

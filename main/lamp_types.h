@@ -91,6 +91,7 @@ typedef enum {
     MSG_BUTTON = 0,     /* 按键事件 (来自 button_task) */
     MSG_COMMAND,        /* 远程命令 (来自 MQTT) */
     MSG_TIMER,          /* 定时器事件 (来自 esp_timer) */
+    MSG_OTA_START,      /* OTA 升级启动 (来自 MQTT upgrade/set) */
 } msg_type_t;
 
 /* 远程命令 ID */
@@ -105,6 +106,11 @@ typedef enum {
 typedef enum {
     TIMER_NIGHT_LAMP = 0,   /* 夜灯 30 分钟超时 */
 } timer_id_t;
+
+/* OTA 升级参数最大长度 */
+#define OTA_URL_MAX_LEN         256     /* 固件下载地址最大长度 */
+#define OTA_TASK_ID_MAX_LEN     16      /* 任务ID字符串最大长度 */
+#define OTA_VERSION_MAX_LEN     16      /* 版本号最大长度 */
 
 /* 统一消息结构 — 通过 FreeRTOS 队列在模块间传递 */
 typedef struct {
@@ -121,6 +127,11 @@ typedef struct {
 
     /* 定时器字段 */
     timer_id_t timer_id;
+
+    /* OTA 字段 */
+    char ota_url[OTA_URL_MAX_LEN];      /* 固件下载地址 */
+    char ota_task_id[OTA_TASK_ID_MAX_LEN]; /* 任务ID */
+    char ota_version[OTA_VERSION_MAX_LEN]; /* 目标版本号 */
 } system_msg_t;
 
 /* ═══════════════════════════════════════════════════
@@ -197,6 +208,7 @@ typedef struct {
 #define FB_MQTT_USERNAME        "FastBee"          /* 认证账号 */
 #define FB_MQTT_PASSWORD        "P55WMKIT5563GT7Z" /* 认证密码 */
 #define FB_FIRMWARE_VERSION     "1.0"             /* 固件版本 */
+#define FB_OTA_BASE_URL         "https://www.fleetbee.top/prod-api" /* OTA 固件下载基础地址 */
 /* FB_DEVICE_NUM 和 FB_USER_ID 不再硬编码，由 AP 配网时 App 下发，存入 NVS */
 
 /* 物模型标识 — 必须与 FastBee 平台物模型定义一致 */

@@ -12,6 +12,7 @@ idf_component_register(
         "state_machine.c"
         "mqtt_client.c"
         "wifi_app.c"
+        "ota_app.c"
     INCLUDE_DIRS
         "."
     REQUIRES
@@ -22,4 +23,8 @@ idf_component_register(
         mqtt
         driver
         json
+        esp_https_ota
+        esp_http_client
+        esp-tls
+        app_update
 )

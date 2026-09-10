@@ -143,28 +143,21 @@ vue/
 
 ---
 
-## 4. MCU 端 OTA（待实现）
+## 4. MCU 端 OTA（已实现）
 
-### 4.1 当前状态
+### 4.1 实现状态
 
 ```
 MCU (C:\Users\jungle\test)
-  ├── lamp_types.h        → FB_FIRMWARE_VERSION "1.0"  (有版本号定义)
-  ├── mqtt_client.c       → 上报 firmwareVersion      (有版本上报)
-  ├── CMakeLists.txt      → 无 esp_https_ota 依赖     (缺少)
-  ├── sdkconfig.defaults  → CONFIG_PARTITION_TABLE_SINGLE_APP=y  (单分区，不支持OTA)
-  ├── 无 partitions.csv    → 无OTA分区表               (缺少)
-  └── 无 ota_app.c        → 无OTA模块                  (缺少)
-```
-
-### 4.2 需要实现的 5 个部分
-
-```
-1. 分区表 (partitions.csv)           — 划分 OTA 分区
-2. CMakeLists.txt 依赖               — 添加 esp_https_ota 组件
-3. sdkconfig 配置                    — 启用 OTA 相关配置
-4. ota_app.c / ota_app.h 模块        — OTA 下载和升级逻辑
-5. mqtt_client.c 增加 OTA 指令处理    — 解析升级指令，启动OTA
+  ├── lamp_types.h        → FB_FIRMWARE_VERSION "2.0", MSG_OTA_START, OTA 字段, FB_OTA_BASE_URL
+  ├── mqtt_client.c       → 订阅 OTA 主题, 解析指令, 上报进度
+  ├── CMakeLists.txt      → 已添加 esp_https_ota, esp_http_client, esp-tls 依赖
+  ├── sdkconfig.defaults  → 自定义分区表, OTA 回滚, HTTP 允许, 证书包
+  ├── partitions.csv      → factory + ota_0 + ota_1 三分区 (各 1MB)
+  ├── ota_app.c/.h        → OTA 下载 + 写入 + 进度上报 + 重启
+  ├── state_machine.c     → handle_ota_start, MSG_OTA_START 事件处理
+  ├── indicator.c/.h      → indicator_set_all (升级时指示灯全亮)
+  └── main.c              → OTA rollback 验证 (新固件首次启动标记 valid)
 ```
 
 ---
@@ -173,97 +166,86 @@ MCU (C:\Users\jungle\test)
 
 ### 5.1 OTA 下发主题（平台 → 设备）
 
-```
-Topic: /{productId}/{serialNumber}/upgrade/set
+设备同时订阅两种格式，兼容 FastBee v2.0 和 v1.x：
 
-对应 TopicType.FIRMWARE_SET = "/upgrade/set"
+```
+v2.0: /{serialNumber}/http/upgrade/set
+v1.x: /{productId}/{serialNumber}/upgrade/set
 ```
 
 ### 5.2 OTA 下发消息体
 
-平台通过 MQTT 发送给设备的 JSON 消息：
+FastBee 下发的 JSON 消息（兼容两种字段名）：
 
+**v2.0 文档格式:**
 ```json
 {
-    "otaId": 1,
-    "otaUrl": "http://192.168.1.100/profile/iot/1/20230901-firmware.bin",
-    "firmwareVersion": "1.1",
-    "firmwareName": "lamp_controller_v1.1",
-    "seqNo": "SEQ001",
-    "productId": 136,
-    "signType": "16md5",
-    "signCode": "",
-    "pushType": 0,
-    "serialNumber": "D1088N947N1G",
-    "deviceName": "大路灯",
-    "taskId": 1,
-    "messageId": "1234567890",
-    "msg": ""
+    "taskId": 26,
+    "url": "/profile/iot/1/2026-0909-140855.bin",
+    "version": 1.2,
+    "status": 1
 }
 ```
 
-**关键字段说明：**
+**v1.x 后端格式:**
+```json
+{
+    "otaUrl": "http://192.168.1.100/profile/iot/1/firmware.bin",
+    "firmwareVersion": "1.1",
+    "taskId": 1,
+    "messageId": "1234567890"
+}
+```
 
-| 字段 | 类型 | 说明 | MCU 怎么用 |
-|------|------|------|-----------|
-| `otaUrl` | string | 固件下载地址 | 用 HTTP 下载固件 |
-| `firmwareVersion` | string | 目标版本号 | 对比当前版本，判断是否需要升级 |
-| `messageId` | string | 消息ID | 回复时带上，平台匹配 |
-| `taskId` | long | 任务ID | 回复时带上，平台更新状态 |
-| `pushType` | int | 0=URL下载升级 | 目前只支持URL方式 |
+MCU 代码兼容两种字段名:
+- URL: `otaUrl` 或 `url`
+- 版本: `firmwareVersion` 或 `version` (字符串或数字)
+- taskId: 数字或字符串
+
+**URL 处理:**
+- 如果 URL 以 `http://` 或 `https://` 开头, 直接使用
+- 如果是相对路径 (`/profile/iot/...`), 拼接 `FB_OTA_BASE_URL` ("https://www.fleetbee.top/prod-api")
 
 ### 5.3 OTA 回复主题（设备 → 平台）
 
-```
-Topic: /{productId}/{serialNumber}/upgrade/reply
+设备同时发布到两种格式:
 
-对应 TopicType.FIRMWARE_UPGRADE_REPLY = "/upgrade/reply"
+```
+v2.0: /{serialNumber}/http/upgrade/reply
+v1.x: /{productId}/{serialNumber}/upgrade/reply
 ```
 
 ### 5.4 OTA 回复消息体（设备 → 平台）
 
-设备收到升级指令后，应该回复：
-
 ```json
-{
-    "messageId": "1234567890",
-    "code": 200,
-    "msg": "开始升级"
-}
+{"taskId":"26","progress":0,"version":"1.2","status":2}   // 开始升级
+{"taskId":"26","progress":50,"version":"1.2","status":2}  // 升级中
+{"taskId":"26","progress":100,"version":"1.2","status":3} // 升级成功
+{"taskId":"26","progress":50,"version":"1.2","status":4}  // 升级失败
 ```
 
-**code 值含义（推测，需要对照后端确认）：**
-
-| code | 含义 | 后端动作 |
-|------|------|---------|
-| 200 | 成功/收到 | upgrade_status 改为 2(升级中) |
-| 其他 | 失败 | upgrade_status 改为 4(升级失败) |
-
-升级完成后，设备再次回复：
-
-```json
-{
-    "messageId": "1234567890",
-    "code": 200,
-    "msg": "升级成功"
-}
-```
-
-后端收到后将 `upgrade_status` 改为 3(成功)。
+| status | 含义 |
+|--------|------|
+| 0 | 等待升级 |
+| 1 | 已发送 |
+| 2 | 升级中 |
+| 3 | 成功 |
+| 4 | 失败 |
 
 ### 5.5 设备版本上报
 
-设备在 `info/post` 上报中已包含版本号：
+设备在 `info/post` 上报中包含版本号：
 
 ```json
 {
-    "firmwareVersion": "1.0",
-    "version": "1.0",
+    "rssi": -55,
+    "firmwareVersion": "2.0",
+    "status": 3,
     ...
 }
 ```
 
-升级成功重启后，新固件应上报新版本号，平台可据此判断升级是否生效。
+升级成功重启后，新固件上报新版本号，平台据此判断升级是否生效。
 
 ---
 
@@ -768,20 +750,45 @@ mqtt: Connected, reporting info with version 1.1
 
 ---
 
-## 总结：工作量评估
+## 总结：实现完成
 
-| 任务 | 难度 | 预计时间 |
+| 任务 | 状态 | 修改文件 |
 |------|------|---------|
-| 分区表 + 编译配置 | 低 | 0.5 天 |
-| ota_app.c 实现 | 中 | 1 天 |
-| MQTT 指令处理 | 中 | 0.5 天 |
-| 状态机集成 | 低 | 0.5 天 |
-| 联调测试 | 中 | 1-2 天 |
-| **合计** | | **3-4 天** |
+| 分区表 + 编译配置 | 已完成 | partitions.csv, sdkconfig.defaults, CMakeLists.txt |
+| OTA 模块实现 | 已完成 | ota_app.c, ota_app.h |
+| MQTT 指令处理 | 已完成 | mqtt_client.c (订阅 + 解析 + 回复) |
+| 状态机集成 | 已完成 | state_machine.c (handle_ota_start), lamp_types.h |
+| 指示灯控制 | 已完成 | indicator.c/.h (indicator_set_all) |
+| OTA 回滚验证 | 已完成 | main.c (启动时标记 valid) |
+| HTTPS 证书支持 | 已完成 | sdkconfig.defaults (证书包), ota_app.c (crt_bundle_attach) |
+| 主题格式兼容 | 已完成 | mqtt_client.c (v2.0 + v1.x 双格式) |
+| 相对 URL 拼接 | 已完成 | ota_app.c (FB_OTA_BASE_URL), lamp_types.h |
 
-后端和前端无需改动，主要工作集中在 MCU 端。
+后端和前端无需改动。MCU 端 OTA 功能已全部实现，可进行端到端测试。
+
+### 测试步骤
+
+1. **编译固件**: `idf.py build` — 确认编译通过
+2. **烧录固件**: `idf.py flash` — 首次烧录到 factory 分区
+3. **配网 + 连接**: 设备完成 AP 配网，连接 WiFi + MQTT
+4. **Web 端上传固件**: 在 FastBee 平台上传新的 .bin 固件文件
+5. **创建升级任务**: 在固件详情页新增任务，选择目标设备
+6. **观察升级过程**: 串口日志查看 OTA 下载进度，指示灯全亮表示升级中
+7. **验证升级成功**: 设备重启后上报新版本号，Web 端状态变为"成功"
+
+### 关键配置项
+
+| 配置 | 值 | 位置 |
+|------|-----|------|
+| FB_FIRMWARE_VERSION | "2.0" | lamp_types.h |
+| FB_OTA_BASE_URL | "https://www.fleetbee.top/prod-api" | lamp_types.h |
+| FB_MQTT_HOST | "81.71.99.53" | lamp_types.h |
+| FB_PRODUCT_ID | "136" | lamp_types.h |
+| OTA 分区 | factory(1MB) + ota_0(1MB) + ota_1(1MB) | partitions.csv |
+| Stack 大小 | 8192 bytes | state_machine.c |
+| HTTPS 证书 | ESP-IDF 证书包 | sdkconfig.defaults + ota_app.c |
 
 ---
 
-> 文档生成日期：2026-09-09
+> 文档更新日期：2026-09-09
 > 项目：FastBee IoT + ESP32-C3 大路灯控制板

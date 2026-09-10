@@ -1,0 +1,10 @@
+# ESP32-C3 OTA 分区表 (4MB Flash)
+# 移除 factory 分区, 使用 ota_0/ota_1 双分区 + otadata
+# app 类型分区 offset 必须对齐到 0x10000 (64KB), 否则 gen_esp32part.py 报错
+# otadata 占 0x10000-0x12000 后, ota_0 必须从 0x20000 起, 中间 0x12000-0x20000 是 64KB 对齐代价
+# Name,     Type, SubType,  Offset,   Size,    Flags
+nvs,         data, nvs,     0x9000,   0x6000,
+phy_init,    data, phy,     0xf000,   0x1000,
+otadata,     data, ota,     0x10000,  0x2000,
+ota_0,       app,  ota_0,   0x20000,  0x140000,
+ota_1,       app,  ota_1,   0x160000, 0x140000,

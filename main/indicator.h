@@ -17,4 +17,7 @@ void indicator_power_on_sequence(void);
 /** 根据系统状态更新所有指示灯 */
 void indicator_update(system_state_t state, const lamp_status_t *status);
 
+/** 设置所有指示灯开关 (OTA 升级时用) */
+void indicator_set_all(bool on);
+
 #endif /* INDICATOR_H */

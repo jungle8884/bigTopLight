@@ -65,3 +65,10 @@ void indicator_update(system_state_t state, const lamp_status_t *status)
     /* 夜灯指示灯: 夜灯模式时亮 */
     gpio_set_level(GPIO_LED_NIGHT,   state == STATE_NIGHT);
 }
+
+void indicator_set_all(bool on)
+{
+    for (int i = 0; i < 5; i++) {
+        gpio_set_level(led_gpios[i], on ? 1 : 0);
+    }
+}

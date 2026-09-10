@@ -25,6 +25,7 @@
 #include "timer.h"
 #include "pwm_drv.h"
 #include "storage.h"
+#include "ota_app.h"
 #include "esp_log.h"
 
 static const char *TAG = "STATE";
@@ -489,6 +490,36 @@ static void handle_timer(timer_id_t timer_id)
 }
 
 /* ═══════════════════════════════════════════════════
+ * OTA 升级事件处理
+ * ═══════════════════════════════════════════════════ */
+
+static void handle_ota_start(const char *url, const char *task_id, const char *version)
+{
+    ESP_LOGI(TAG, "=== OTA Upgrade Start ===");
+    ESP_LOGI(TAG, "URL: %s", url);
+    ESP_LOGI(TAG, "Target version: %s", version);
+
+    /* 关闭所有灯, 为 OTA 腾出资源 */
+    pwm_turn_off(LAMP_UPPER, FADE_OUT_TIME_MS);
+    pwm_turn_off(LAMP_LOWER, FADE_OUT_TIME_MS);
+    indicator_set_all(true);  /* 指示灯全亮, 表示升级中 */
+
+    /* 执行 OTA (阻塞, 成功后重启不返回) */
+    esp_err_t ret = ota_app_start(url, task_id, version);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "OTA failed: %s", esp_err_to_name(ret));
+        indicator_set_all(false);  /* 升级失败, 灯灭 */
+        /* 恢复灯光状态 */
+        if (s_status.switch_upper) {
+            pwm_set_brightness(LAMP_UPPER, s_status.bright_upper, FADE_IN_TIME_MS);
+        }
+        if (s_status.switch_lower) {
+            pwm_set_brightness(LAMP_LOWER, s_status.bright_lower, FADE_IN_TIME_MS);
+        }
+    }
+}
+
+/* ═══════════════════════════════════════════════════
  * 状态机主任务 (lamp_task)
  * ═══════════════════════════════════════════════════ */
 /**
@@ -534,6 +565,12 @@ static void lamp_task(void *arg)
                 handle_timer(msg.timer_id);
                 break;
 
+            case MSG_OTA_START:
+                ESP_LOGI(TAG, "OTA: url=%s version=%s taskId=%s",
+                         msg.ota_url, msg.ota_version, msg.ota_task_id);
+                handle_ota_start(msg.ota_url, msg.ota_task_id, msg.ota_version);
+                break;
+
             default:
                 break;
         }
@@ -575,7 +612,7 @@ void state_machine_init(void)
 void state_machine_start_task(void)
 {
     /* 状态机任务优先级 7 (高, 优先处理用户输入) */
-    xTaskCreate(lamp_task, "lamp_task", 4096, NULL, 7, NULL);
+    xTaskCreate(lamp_task, "lamp_task", 8192, NULL, 7, NULL);
 }
 
 QueueHandle_t state_machine_get_event_queue(void)
