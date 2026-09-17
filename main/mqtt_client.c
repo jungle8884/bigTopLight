@@ -36,6 +36,8 @@ static char s_topic_upgrade_set[96];     /* /{deviceNum}/http/upgrade/set (OTA�
 static char s_topic_upgrade_set_v1[96];  /* /{productId}/{deviceNum}/upgrade/set (OTA下发 v1.x) */
 static char s_topic_upgrade_reply[96];   /* /{deviceNum}/http/upgrade/reply (OTA回复 v2.0) */
 static char s_topic_upgrade_reply_v1[96]; /* /{productId}/{deviceNum}/upgrade/reply (OTA回复 v1.x) */
+static char s_topic_ota_get[96];        /* /{productId}/{deviceNum}/ota/get (OTA下发 - Web端实际格式) */
+static char s_topic_ota_post[96];       /* /{productId}/{deviceNum}/ota/post (OTA回复 - Web端实际格式) */
 
 /* ── LWT 遗嘱消息: {"status":4} (4=离线) ── */
 static const char *s_lwt_msg = "{\"status\":4}";
@@ -218,8 +220,10 @@ static void parse_ota_command(const char *data, int len)
         return;
     }
 
-    /* 提取 URL (兼容 otaUrl 和 url 两种字段名) */
+    /* 提取 URL (兼容 otaUrl, url, downLoadUrl, downloadUrl 四种字段名) */
     cJSON *url_obj = cJSON_GetObjectItem(root, "otaUrl");
+    if (!url_obj) url_obj = cJSON_GetObjectItem(root, "downLoadUrl");
+    if (!url_obj) url_obj = cJSON_GetObjectItem(root, "downloadUrl");
     if (!url_obj) url_obj = cJSON_GetObjectItem(root, "url");
 
     /* 提取版本号 (兼容 firmwareVersion 和 version) */
@@ -302,9 +306,10 @@ static void mqtt_event_handler(void *arg, esp_event_base_t base,
             ESP_LOGI(TAG, "connected to FastBee broker");
             /* 订阅功能指令主题 (平台下发命令) */
             esp_mqtt_client_subscribe(s_client, s_topic_function_get, 1);
-            /* 订阅 OTA 升级主题 — 兼容 v2.0 和 v1.x 两种格式 */
+            /* 订阅 OTA 升级主题 — 兼容三种格式 */
             esp_mqtt_client_subscribe(s_client, s_topic_upgrade_set, 1);
             esp_mqtt_client_subscribe(s_client, s_topic_upgrade_set_v1, 1);
+            esp_mqtt_client_subscribe(s_client, s_topic_ota_get, 1);
             /* 发布设备信息 (status=3 在线) */
             publish_device_info();
             break;
@@ -334,7 +339,9 @@ static void mqtt_event_handler(void *arg, esp_event_base_t base,
                        ((strncmp(event->topic, s_topic_upgrade_set, event->topic_len) == 0 &&
                          s_topic_upgrade_set[event->topic_len] == '\0') ||
                         (strncmp(event->topic, s_topic_upgrade_set_v1, event->topic_len) == 0 &&
-                         s_topic_upgrade_set_v1[event->topic_len] == '\0'))) {
+                         s_topic_upgrade_set_v1[event->topic_len] == '\0') ||
+                        (strncmp(event->topic, s_topic_ota_get, event->topic_len) == 0 &&
+                         s_topic_ota_get[event->topic_len] == '\0'))) {
                 /* OTA 升级指令 → 解析并启动升级 (兼容 v2.0 和 v1.x 主题) */
                 ESP_LOGI(TAG, "OTA upgrade command received");
                 parse_ota_command(event->data, event->data_len);
@@ -391,6 +398,11 @@ void mqtt_app_start(void)
              "%s/upgrade/set", s_topic_prefix);
     snprintf(s_topic_upgrade_reply_v1, sizeof(s_topic_upgrade_reply_v1),
              "%s/upgrade/reply", s_topic_prefix);
+    /* Web 端实际使用的 OTA 主题格式: /{productId}/{deviceNum}/ota/get */
+    snprintf(s_topic_ota_get, sizeof(s_topic_ota_get),
+             "%s/ota/get", s_topic_prefix);
+    snprintf(s_topic_ota_post, sizeof(s_topic_ota_post),
+             "%s/ota/post", s_topic_prefix);
 
     /* 拼接 ClientId: S&{deviceNum}&{productId}&{userId} */
     snprintf(s_client_id, sizeof(s_client_id),
@@ -565,8 +577,11 @@ void mqtt_publish_ota_reply(const char *payload)
     /* 发布到 v2.0 格式主题 */
     esp_mqtt_client_publish(s_client, s_topic_upgrade_reply,
                             payload, 0, 1, 0);
-    /* 同时发布到 v1.x 格式主题, 确保后端能收到 */
+    /* 同时发布到 v1.x 格式主题 */
     esp_mqtt_client_publish(s_client, s_topic_upgrade_reply_v1,
+                            payload, 0, 1, 0);
+    /* 同时发布到 Web 端使用的 ota/post 主题 */
+    esp_mqtt_client_publish(s_client, s_topic_ota_post,
                             payload, 0, 1, 0);
     ESP_LOGI(TAG, "OTA reply: %s", payload);
 }
