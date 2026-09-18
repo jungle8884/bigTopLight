@@ -208,7 +208,7 @@ typedef struct {
 #define FB_MQTT_USERNAME        "FastBee"          /* 认证账号 */
 #define FB_MQTT_PASSWORD        "P55WMKIT5563GT7Z" /* 认证密码 */
 #define FB_FIRMWARE_VERSION     "1.0"             /* 固件版本 */
-#define FB_OTA_BASE_URL         "https://www.fleetbee.top/prod-api" /* OTA 固件下载基础地址 */
+#define FB_OTA_BASE_URL         "https://www.fleetbee.top/prod-api" /* OTA 固件下载基础地址 */  
 /* FB_DEVICE_NUM 和 FB_USER_ID 不再硬编码，由 AP 配网时 App 下发，存入 NVS */
 
 /* 物模型标识 — 必须与 FastBee 平台物模型定义一致 */
