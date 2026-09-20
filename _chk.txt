@@ -1,0 +1,11 @@
+esp_app_desc.c exists: True
+obj exists: True
+b3exit: EXIT=2
+
+git status short:
+ M main/CMakeLists.txt
+ M main/main.c
+ M main/ota_app.c
+?? _b2exit.txt
+?? _b3exit.txt
+?? _bexit.txt

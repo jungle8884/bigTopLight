@@ -64,7 +64,7 @@ static void publish_device_info(void)
 
     cJSON *root = cJSON_CreateObject();
     cJSON_AddNumberToObject(root, "rssi", rssi); 
-    cJSON_AddStringToObject(root, "firmwareVersion", FB_FIRMWARE_VERSION);
+    cJSON_AddStringToObject(root, "firmwareVersion", ota_app_get_version());
     cJSON_AddNumberToObject(root, "status", 3);  /* 3=在线 */
     cJSON_AddStringToObject(root, "userId", s_user_id);
     cJSON_AddNumberToObject(root, "longitude", 0);
@@ -73,7 +73,7 @@ static void publish_device_info(void)
     cJSON *summary = cJSON_CreateObject();
     cJSON_AddStringToObject(summary, "name", "XS-XLD5");
     cJSON_AddStringToObject(summary, "chip", "ESP32-C3");
-    cJSON_AddStringToObject(summary, "version", FB_FIRMWARE_VERSION);
+    cJSON_AddStringToObject(summary, "version", ota_app_get_version());
     cJSON_AddItemToObject(root, "summary", summary);
 
     char *json_str = cJSON_PrintUnformatted(root);

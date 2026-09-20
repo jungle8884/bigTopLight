@@ -7,6 +7,7 @@
 #include "ota_app.h"
 #include "esp_log.h"
 #include "esp_ota_ops.h"
+#include "esp_app_desc.h"
 #include "esp_https_ota.h"
 #include "esp_http_client.h"
 #include "esp_crt_bundle.h"
@@ -15,6 +16,7 @@
 #include "lamp_types.h"
 #include <string.h>
 #include <stdlib.h>
+#include <time.h>
 
 static const char *TAG = "OTA";
 
@@ -25,9 +27,56 @@ static const char *TAG = "OTA";
  *  true = OTA 进行中 (拒绝重复触发); false = 空闲 */
 static volatile bool s_ota_in_progress = false;
 
+/* 判断 URL 里的 host 是否是设备端无法解析/无意义的主机名
+ * 自建 FastBee 会按"浏览器访问地址"生成 localhost / 127.0.0.1,
+ * 设备端没有该主机名解析, 直接下载必失败, 需要用 FB_OTA_BASE_URL 兜底 */
+static bool is_unusable_host(const char *host)
+{
+    static const char *bad[] = {"localhost", "127.0.0.1", "0.0.0.0"};
+    size_t host_len = strcspn(host, "/");   /* host 部分, 可能带 :port */
+
+    for (size_t i = 0; i < sizeof(bad) / sizeof(bad[0]); i++) {
+        size_t n = strlen(bad[i]);
+        if (host_len >= n && strncmp(host, bad[i], n) == 0) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/* 等待系统时间同步 — HTTPS 的前提
+ * 设备上电后 time() 从 1970 起算, mbedTLS 校验证书有效期必然失败
+ * (MBEDTLS_ERR_X509_CERT_VERIFY_FAILED)。SNTP 由 main.c 在联网后异步启动,
+ * 这里只负责等到时间真正有效。 */
+static bool wait_for_time_sync(int timeout_ms)
+{
+    const time_t valid_after = 1700000000;   /* 2023-11-14, 早于此说明还没同步 */
+    int waited = 0;
+
+    while (waited < timeout_ms) {
+        time_t now = 0;
+        time(&now);
+        if (now > valid_after) {
+            struct tm t;
+            localtime_r(&now, &t);
+            ESP_LOGI(TAG, "System time ok: %04d-%02d-%02d %02d:%02d:%02d",
+                     t.tm_year + 1900, t.tm_mon + 1, t.tm_mday,
+                     t.tm_hour, t.tm_min, t.tm_sec);
+            return true;
+        }
+        vTaskDelay(pdMS_TO_TICKS(500));
+        waited += 500;
+    }
+
+    ESP_LOGW(TAG, "Time not synced after %d ms, HTTPS cert check may fail", timeout_ms);
+    return false;
+}
+
 const char *ota_app_get_version(void)
 {
-    return FB_FIRMWARE_VERSION;
+    /* 版本号取自镜像内置的 esp_app_desc (由顶层 CMakeLists 的 PROJECT_VER 决定),
+     * 保证 "镜像元数据" 和 "上报平台的版本" 永远一致, 不存在两处宏漂移 */
+    return esp_app_get_description()->version;
 }
 
 bool ota_app_need_upgrade(const char *target_version)
@@ -35,7 +84,7 @@ bool ota_app_need_upgrade(const char *target_version)
     if (!target_version || target_version[0] == '\0') {
         return true;  /* 无版本号, 默认升级 */
     }
-    return strcmp(target_version, FB_FIRMWARE_VERSION) != 0;
+    return strcmp(target_version, ota_app_get_version()) != 0;
 }
 
 /* 上报 OTA 进度到平台 */
@@ -68,26 +117,63 @@ esp_err_t ota_app_start(const char *url, const char *task_id, const char *versio
     ESP_LOGI(TAG, "=== OTA Start ===");
     ESP_LOGI(TAG, "URL: %s", url);
     ESP_LOGI(TAG, "Version: %s", version ? version : "(null)");
-    ESP_LOGI(TAG, "Current version: %s", FB_FIRMWARE_VERSION);
+    ESP_LOGI(TAG, "Current version: %s", ota_app_get_version());
 
     /* 互斥检查: 防止并发 OTA 损坏两个分区 */
     if (s_ota_in_progress) {
         ESP_LOGW(TAG, "OTA already in progress, ignoring duplicate request");
         report_ota_progress(task_id, 0, 4, version);  /* status=4 失败 */
-        return ESP_ERR_INVALID_STATE;
+        return ESP_ERR_INVALID_STATE; 
     }
     s_ota_in_progress = true;
 
-    /* FastBee 下发的是相对路径 (/profile/iot/...), 需拼接完整 URL */
+    /* ── 组装下载地址 ──────────────────────────────────────────────
+     * FastBee 下发的 downloadUrl 有三种形态:
+     *   1) 完整 URL 且 host 可用 → 原样使用 (在线平台 www.fleetbee.top)
+     *   2) 完整 URL 但 host 是 localhost / 127.0.0.1 / 0.0.0.0
+     *      ← 自建平台按"浏览器访问地址"生成, 设备端解析不了
+     *      → 只取 path, 用编译期的 FB_OTA_BASE_URL 重拼
+     *   3) 相对路径 → FB_OTA_BASE_URL + path
+     *
+     * ⚠ 绝不能无条件重拼 host: 在线平台 context-path 是 prod-api,
+     *   自建是 dev-api, 无脑重拼会拼出 /prod-api/prod-api/... 双前缀 → 404 */
     char full_url[OTA_URL_MAX_LEN + 64];
-    if (strncmp(url, "http://", 7) == 0 || strncmp(url, "https://", 8) == 0) {
-        /* 已是完整 URL, 直接使用 */
-        strncpy(full_url, url, sizeof(full_url) - 1);
-        full_url[sizeof(full_url) - 1] = '\0';
+    const char *host = NULL;
+
+    if (strncmp(url, "http://", 7) == 0) {
+        host = url + 7;
+    } else if (strncmp(url, "https://", 8) == 0) {
+        host = url + 8;
+    }
+
+    if (host && !is_unusable_host(host)) {
+        /* 形态 1: 完整 URL 且 host 可用 → 原样下载 */
+        snprintf(full_url, sizeof(full_url), "%s", url);
+        ESP_LOGI(TAG, "Download URL: %s", full_url);
     } else {
-        /* 相对路径, 拼接基础地址 */
-        snprintf(full_url, sizeof(full_url), "%s%s", FB_OTA_BASE_URL, url);
-        ESP_LOGI(TAG, "Full URL: %s", full_url);
+        /* 形态 2/3: 用 FB_OTA_BASE_URL 重拼 */
+        const char *path = host ? strchr(host, '/') : url;
+        if (!path) {
+            path = "";
+        }
+
+        /* FB_OTA_BASE_URL 末尾可能带 '/', 先削掉, 避免拼出 "//" */
+        size_t base_len = strlen(FB_OTA_BASE_URL);
+        while (base_len > 0 && FB_OTA_BASE_URL[base_len - 1] == '/') {
+            base_len--;
+        }
+
+        if (path[0] == '/') {
+            snprintf(full_url, sizeof(full_url), "%.*s%s", (int)base_len, FB_OTA_BASE_URL, path);
+        } else {
+            snprintf(full_url, sizeof(full_url), "%.*s/%s", (int)base_len, FB_OTA_BASE_URL, path);
+        }
+        ESP_LOGW(TAG, "URL host unusable, rebuilt: %s (platform gave: %s)", full_url, url);
+    }
+
+    /* HTTPS 必须校验证书有效期; 设备刚上电时系统时间是 1970, 握手必失败 */
+    if (strncmp(full_url, "https://", 8) == 0) {
+        wait_for_time_sync(15000);
     }
 
     /* 上报: 开始升级 (status=2) */
@@ -105,8 +191,13 @@ esp_err_t ota_app_start(const char *url, const char *task_id, const char *versio
 
     esp_https_ota_config_t ota_config = {
         .http_config = &config,
-        .partial_http_download = true,
-        .max_http_request_size = 2048,  /* ESP32-C3 RAM 紧张, 4KB 偏大 */
+        /* partial_http_download=false 是本项目的关键配置:
+         * fleetbee.top 返回 chunked 流 (无 Content-Length), partial 模式下
+         * image_length 恒为 -1, perform() 永远无法进入 SUCCESS 态,
+         * finish() 会静默跳过 set_boot_partition 却返回 ESP_OK,
+         * 导致 otadata 未写入 → 重启回旧固件 (2026-09-20 实测踩坑)。
+         * 关掉后走 !partial 分支, 状态机正常完成 */
+        .partial_http_download = false,
     };
 
     esp_https_ota_handle_t ota_handle = NULL;
@@ -156,14 +247,35 @@ esp_err_t ota_app_start(const char *url, const char *task_id, const char *versio
 
     ESP_LOGI(TAG, "OTA download complete, verifying...");
 
-    /* esp_https_ota_finish() 内部已完成两件事:
-     *   1. 校验固件签名/校验和
-     *   2. 写入 otadata, 把刚烧录的分区设为 boot 分区
-     * 因此此处严禁再调用 esp_ota_set_boot_partition() —
-     * esp_ota_get_next_update_partition(NULL) 返回的是"对端"分区(下次 OTA 的写入目标),
-     * 再次 set 会切到一个未烧录/旧固件的分区, 导致升级后启动失败
-     */
-    ESP_LOGI(TAG, "OTA success! Boot partition switched by finish()");
+    /* ── 手动兜底 set_boot_partition ──────────────────────────────
+     * 实测出现过 finish() 返回 ESP_OK 但 otadata 没被写入的情况
+     * (重启后 otadata[1]=0xffffffff, 设备跳回旧固件)。
+     * esp_ota_get_next_update_partition(NULL) 基于 running 分区取对端:
+     * running=ota_0 时返回 ota_1 = 刚烧录完的分区, 语义必然正确;
+     * 若 finish 已正常切换, 这里重复写同一分区, 幂等无害 */
+    const esp_partition_t *update_part = esp_ota_get_next_update_partition(NULL);
+    if (!update_part) {
+        ESP_LOGE(TAG, "FATAL: no update partition found after finish");
+        s_ota_in_progress = false;
+        report_ota_progress(task_id, 100, 4, version);
+        return ESP_FAIL;
+    }
+    ret = esp_ota_set_boot_partition(update_part);
+    ESP_LOGI(TAG, "Manual esp_ota_set_boot_partition(%s): %s",
+             update_part->label, esp_err_to_name(ret));
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "FATAL: cannot set boot partition, OTA aborted");
+        s_ota_in_progress = false;
+        report_ota_progress(task_id, 100, 4, version);
+        return ret;
+    }
+
+    /* 诊断: set_boot 之后立即确认 boot 指针确实切到了新分区。
+     * 正常应打印 boot=ota_1; 若仍是 running 的对端没变, 说明 otadata 写入失败 */
+    const esp_partition_t *boot_part = esp_ota_get_boot_partition();
+    ESP_LOGI(TAG, "After set_boot: boot=%s running=%s",
+             boot_part ? boot_part->label : "(null)",
+             esp_ota_get_running_partition()->label);
 
     /* 上报: 升级成功 (progress=100, status=3) */
     report_ota_progress(task_id, 100, 3, version);

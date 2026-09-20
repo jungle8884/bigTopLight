@@ -29,18 +29,52 @@
 #include "esp_event.h"
 #include "esp_netif.h"
 #include "esp_ota_ops.h"
+#include "esp_app_desc.h"
+#include "esp_sntp.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include <string.h>
+#include <stdlib.h>
+#include <time.h>
 
 static const char *TAG = "MAIN";
 
 /* ═══════════════════════════════════════════════════
- * WiFi 连接成功回调 — 启动 MQTT
+ * SNTP 时间同步 — HTTPS OTA 的前提
+ *
+ * 设备上电后系统时间从 1970 起算, mbedTLS 校验服务器证书有效期时
+ * 必然报 MBEDTLS_ERR_X509_CERT_VERIFY_FAILED("证书尚未生效")。
+ * 所以只要走 HTTPS 下载固件, 联网后必须先校时。
+ * 这里只做异步启动, 实际等待由 ota_app_start() 里的
+ * wait_for_time_sync() 负责, 不会阻塞 MQTT 启动。
+ * ═══════════════════════════════════════════════════ */
+static bool s_sntp_started = false;
+
+static void sntp_start(void)
+{
+    if (s_sntp_started) {
+        return;   /* WiFi 断线重连会重复触发回调, 只初始化一次 */
+    }
+    s_sntp_started = true;
+
+    ESP_LOGI(TAG, "Starting SNTP (required for HTTPS cert validation)");
+    esp_sntp_setoperatingmode(SNTP_OPMODE_POLL);
+    /* 注意: CONFIG_LWIP_SNTP_MAX_SERVERS=1, 只能配一个, 别加第二个 */
+    esp_sntp_setservername(0, "ntp.aliyun.com");    /* 国内可达性最好 */
+    esp_sntp_init();
+
+    setenv("TZ", "CST-8", 1);   /* 东八区, 只影响日志时间显示 */
+    tzset();
+}
+
+/* ═══════════════════════════════════════════════════
+ * WiFi 连接成功回调 — 校时 + 启动 MQTT
  * ═══════════════════════════════════════════════════ */
 static void on_wifi_connected(void)
 {
-    ESP_LOGI(TAG, "WiFi connected, starting MQTT client...");
+    ESP_LOGI(TAG, "WiFi connected");
+    sntp_start();
+    ESP_LOGI(TAG, "starting MQTT client...");
     mqtt_app_start();
 }
 
@@ -68,7 +102,7 @@ void app_main(void)
             }
         }
         ESP_LOGI(TAG, "Running partition: %s, firmware v%s",
-                 running->label, FB_FIRMWARE_VERSION);
+                 running->label, esp_app_get_description()->version);
     }
 
     /* ── 1. 初始化底层网络和事件循环 (Wi-Fi 依赖) ── */

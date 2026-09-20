@@ -19,6 +19,8 @@ idf_component_register(
         nvs_flash
         esp_timer
         esp_wifi
+        esp_netif
+        lwip
         esp_http_server
         mqtt
         driver
@@ -27,4 +29,5 @@ idf_component_register(
         esp_http_client
         esp-tls
         app_update
+        esp_app_format
 )
