@@ -191,12 +191,15 @@ esp_err_t ota_app_start(const char *url, const char *task_id, const char *versio
 
     esp_https_ota_config_t ota_config = {
         .http_config = &config,
-        /* partial_http_download=false 是本项目的关键配置:
-         * fleetbee.top 返回 chunked 流 (无 Content-Length), partial 模式下
-         * image_length 恒为 -1, perform() 永远无法进入 SUCCESS 态,
-         * finish() 会静默跳过 set_boot_partition 却返回 ESP_OK,
-         * 导致 otadata 未写入 → 重启回旧固件 (2026-09-20 实测踩坑)。
-         * 关掉后走 !partial 分支, 状态机正常完成 */
+        /* partial_http_download=false 是本项目的关键配置 (2026-09-20 实测踩坑):
+         * 开启 partial 时, esp_https_ota_begin() 会先发 HTTP HEAD 请求,
+         * 并从 HEAD 响应取 Content-Length 作为 image_length
+         * (esp_https_ota.c:332-347)。fleetbee.top 对 HEAD 不返回
+         * Content-Length → image_length 恒为 0 → perform() 永远进不了
+         * SUCCESS 态 → finish() 静默跳过 set_boot_partition 却返回 ESP_OK
+         * → otadata 未写 → 重启回旧固件且无任何报错。
+         * 关掉后 image_length 改从 GET 响应取 (实测 1148640, 进度上报也正常),
+         * 状态机能正常走到 SUCCESS。 */
         .partial_http_download = false,
     };
 
@@ -260,14 +263,22 @@ esp_err_t ota_app_start(const char *url, const char *task_id, const char *versio
         report_ota_progress(task_id, 100, 4, version);
         return ESP_FAIL;
     }
-    ret = esp_ota_set_boot_partition(update_part);
-    ESP_LOGI(TAG, "Manual esp_ota_set_boot_partition(%s): %s",
-             update_part->label, esp_err_to_name(ret));
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "FATAL: cannot set boot partition, OTA aborted");
-        s_ota_in_progress = false;
-        report_ota_progress(task_id, 100, 4, version);
-        return ret;
+
+    /* 只在 finish() 没切成功时才补刀: 已切对就不再重复做 image_validate + 写 otadata
+     * (每次手动 set_boot 都会重新校验一遍镜像, 多花约 200ms) */
+    const esp_partition_t *boot_now = esp_ota_get_boot_partition();
+    if (boot_now && boot_now->address == update_part->address) {
+        ESP_LOGI(TAG, "Boot partition already switched to %s by finish()", update_part->label);
+    } else {
+        ret = esp_ota_set_boot_partition(update_part);
+        ESP_LOGI(TAG, "Manual esp_ota_set_boot_partition(%s): %s",
+                 update_part->label, esp_err_to_name(ret));
+        if (ret != ESP_OK) {
+            ESP_LOGE(TAG, "FATAL: cannot set boot partition, OTA aborted");
+            s_ota_in_progress = false;
+            report_ota_progress(task_id, 100, 4, version);
+            return ret;
+        }
     }
 
     /* 诊断: set_boot 之后立即确认 boot 指针确实切到了新分区。
