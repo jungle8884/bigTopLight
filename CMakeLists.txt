@@ -8,6 +8,6 @@ include($ENV{IDF_PATH}/tools/cmake/project.cmake)
 # 固件版本单一来源: 写入镜像 esp_app_desc, 设备端通过
 # esp_app_get_description()->version 读取并上报平台。
 # 每次发新固件前只需改这一处。
-set(PROJECT_VER "5.0")
+set(PROJECT_VER "6.0")
 
 project(lamp_controller)
