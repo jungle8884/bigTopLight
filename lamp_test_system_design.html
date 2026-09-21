@@ -112,12 +112,13 @@ pre {
 <div class="diagram-canvas">
   <div class="diagram-header">
     <h1 class="diagram-title">XS-XLD5 V3.0 大路灯控制板 — 产测上位机系统设计方案</h1>
-    <p class="diagram-subtitle">PRODUCTION TEST SYSTEM · PYTHON + PySide6 · 测试数据全流程记录</p>
+    <p class="diagram-subtitle">PRODUCTION TEST SYSTEM · PYTHON + PySide6 · 测试数据全流程记录 · 固件 v5.0 / OTA 已打通</p>
   </div>
 
   <!-- 1. 概述 -->
   <h2>1. 系统概述</h2>
-  <p>针对 <b>XS-XLD5 V3.0 大路灯控制板</b>（ESP32-C3, ESP-IDF + FreeRTOS, FastBee MQTT）设计产线测试上位机系统。系统通过 <b>UART 串口产测协议</b>与 DUT 交互，自动执行按键/调光/模式/记忆/MQTT 等测试项，将测试结果完整记录到 SQLite 数据库，并提供良率统计与不良品分析。</p>
+  <p>针对 <b>XS-XLD5 V3.0 大路灯控制板</b>（ESP32-C3, ESP-IDF v5.4.4 + FreeRTOS, FastBee MQTT，当前固件 <b>v5.0</b>）设计产线测试上位机系统。系统通过 <b>UART 串口产测协议</b>与 DUT 交互，自动执行按键/调光/模式/记忆/MQTT/OTA 等测试项，将测试结果完整记录到 SQLite 数据库，并提供良率统计与不良品分析。</p>
+  <p>设备端 <b>OTA 双分区升级已实测打通</b>（v4.0 &rarr; v5.0，ota_1 &rarr; ota_0 双向切换均验证通过），因此产测需覆盖「运行分区 + 固件版本」校验，见 <b>第 10 节</b>。</p>
 
   <div class="flow-row">
     <div class="flow-box">SN 扫码</div><span class="flow-arrow">&rarr;</span>
@@ -144,10 +145,12 @@ pre {
 │  测试流程引擎    结果判定模块    良率统计分析              │
 ├─────────────────────────────────────────────────────────┤
 │ 通信 &amp; 数据层                                            │
-│  UART 产测协议   MQTT 客户端    SQLite 存储 / 报表导出     │
+│  UART 产测协议   MQTT 客户端   HTTPS OTA 触发/校验         │
+│  SQLite 存储 / 报表导出                                    │
 ├─────────────────────────────────────────────────────────┤
 │ 硬件层                                                    │
-│  ESP32-C3 DUT (智能灯板)    测试治具 &amp; 仪器(电源/万用表)  │
+│  ESP32-C3 DUT (智能灯板, ota_0/ota_1 双分区)              │
+│  测试治具 &amp; 仪器(电源/万用表)                             │
 └─────────────────────────────────────────────────────────┘</pre>
 
   <!-- 3. 功能模块 -->
@@ -214,13 +217,23 @@ pre {
     <tr><td><code>AT+WIFI?</code></td><td>Q</td><td>查询 Wi-Fi 状态与 RSSI</td><td><code>+WIFI:1,-52</code></td></tr>
     <tr><td><code>AT+MQTT?</code></td><td>Q</td><td>查询 MQTT 连接状态</td><td><code>+MQTT:1</code></td></tr>
     <tr><td><code>AT+NIGHT_TIMEOUT=&lt;sec&gt;</code></td><td>C</td><td>产测模式配置夜灯超时（默认 30min）</td><td><code>+NT:OK</code></td></tr>
+    <tr><td><code>AT+OTAINFO?</code></td><td>Q</td><td>查询当前运行分区 + 固件版本（OTA 校验用）</td><td><code>+OTAINFO:ota_0,5.0</code></td></tr>
+    <tr><td><code>AT+PART?</code></td><td>Q</td><td>查询 OTA 分区状态（boot/running/next + otadata seq）</td><td><code>+PART:ota_0,ota_0,ota_1,3</code></td></tr>
+    <tr><td><code>AT+OTA=&lt;url&gt;,&lt;ver&gt;</code></td><td>C</td><td>触发 OTA 升级（产线预置固件用，需先校时）</td><td><code>+OTA:OK</code></td></tr>
+    <tr><td><code>AT+SNTP?</code></td><td>Q</td><td>查询时间同步状态（HTTPS 证书校验前提）</td><td><code>+SNTP:1,1758350000</code></td></tr>
   </table>
+
+  <div class="note">
+    <b>AT+OTAINFO? 的实现要点</b>：版本读 <code>esp_app_get_description()-&gt;version</code>（即 <code>PROJECT_VER</code>），分区读 <code>esp_ota_get_running_partition()-&gt;label</code>。不要在固件里再写一份版本宏，两处会漂移。
+  </div>
 
   <!-- 5. 数据库 -->
   <h2>5. 数据库设计（SQLite）</h2>
   <pre>test_records        -- 测试主记录
   id INTEGER PK, sn TEXT UNIQUE, model TEXT, batch_no TEXT,
   operator TEXT, station TEXT, start_time TEXT, end_time TEXT,
+  fw_version TEXT,                 -- 固件版本 (AT+OTAINFO?), 追溯用
+  fw_partition TEXT,               -- 运行分区 (ota_0 / ota_1)
   overall_result TEXT(PASS/FAIL), retest_flag INTEGER, remark TEXT
 
 test_items          -- 测试项明细 (N 对 1 关联 test_records)
@@ -245,7 +258,7 @@ operators           -- 操作员
   <h2>6. 测试项清单（XS-XLD5 专用）</h2>
   <table>
     <tr><th>#</th><th>测试项</th><th>产测指令/方法</th><th>判定标准</th></tr>
-    <tr><td>1</td><td>固件版本</td><td><code>AT+VER?</code></td><td>与期望版本一致</td></tr>
+    <tr><td>1</td><td>固件版本</td><td><code>AT+VER?</code> / <code>AT+OTAINFO?</code></td><td>与期望版本一致（当前 <b>5.0</b>）</td></tr>
     <tr><td>2</td><td>上电指示</td><td>观察 5 LED 亮 1s</td><td>全部点亮后熄灭</td></tr>
     <tr><td>3</td><td>开关机</td><td><code>AT+KEY=0,SHORT</code></td><td><code>+STATE:POWER_ON</code></td></tr>
     <tr><td>4</td><td>上灯开关</td><td><code>AT+KEY=1,SHORT</code></td><td>上灯 PWM &gt; 0</td></tr>
@@ -263,7 +276,15 @@ operators           -- 操作员
     <tr><td>16</td><td>Wi-Fi RSSI</td><td><code>AT+WIFI?</code></td><td>RSSI &gt; 阈值</td></tr>
     <tr><td>17</td><td>夜灯超时</td><td><code>AT+NIGHT_TIMEOUT=10</code> 后验证</td><td>10s 后全关</td></tr>
     <tr><td>18</td><td>老化测试</td><td>连续运行 N 小时（离线工位）</td><td>无异常复位、无死机</td></tr>
+    <tr><td>19</td><td>运行分区校验</td><td><code>AT+PART?</code></td><td>boot == running，otadata seq 有效</td></tr>
+    <tr><td>20</td><td>时间同步</td><td><code>AT+SNTP?</code></td><td>已同步且时间戳 &gt; 2023 年</td></tr>
+    <tr><td>21</td><td>OTA 升级</td><td>平台下发 ota/get &rarr; 观察进度 &rarr; 重启</td><td>status 2&rarr;3，重启后版本=目标版本</td></tr>
+    <tr><td>22</td><td>OTA 回滚验证</td><td>升级后不 mark valid 强制断电两次</td><td>自动回退旧分区且能正常启动</td></tr>
   </table>
+
+  <div class="callout">
+    <b>OTA 测试项（21/22）耗时较长</b>，建议放在<b>抽检工位</b>而非每台必测；全检工位只做 19/20（分区 + 校时，秒级完成）。测试项 21 的判定必须「重启后读版本」，只看 status=3 不够——本次实测踩过的坑就是 finish 返回 OK 但没切分区。
+  </div>
 
   <!-- 7. 界面设计 -->
   <h2>7. 界面设计</h2>
@@ -315,13 +336,56 @@ operators           -- 操作员
   <h2>9. 实施路线图</h2>
   <table>
     <tr><th>阶段</th><th>内容</th><th>产出</th></tr>
-    <tr><td>P1 通信先行</td><td>固件增加产测指令；Python 串口协议层 + 单元测试（mock 串口）</td><td>指令收发可用、日志可查</td></tr>
+    <tr><td>P1 通信先行</td><td>固件增加产测指令（含 <code>AT+OTAINFO?</code> / <code>AT+PART?</code> / <code>AT+SNTP?</code>）；Python 串口协议层 + 单元测试（mock 串口）</td><td>指令收发可用、日志可查</td></tr>
     <tr><td>P2 数据层</td><td>SQLite 建表、DAO、SN 去重、Excel 导出</td><td>数据可入库可导出</td></tr>
     <tr><td>P3 界面骨架</td><td>主窗口 + 测试执行界面 + 登录</td><td>可手动跑通 3 个测试项</td></tr>
     <tr><td>P4 流程引擎</td><td>JSON 测试项配置 + 序列执行 + 判定 + 重试</td><td>自动跑通全序列</td></tr>
     <tr><td>P5 看板统计</td><td>良率趋势、Pareto、日报导出</td><td>数据可视化</td></tr>
     <tr><td>P6 打磨</td><td>打包(PyInstaller)、声光提示、治具联动、老化模式</td><td>可部署产线</td></tr>
   </table>
+
+  <!-- 10. OTA -->
+  <h2>10. OTA 与版本管理（产测侧要点）</h2>
+  <p>设备端 OTA 已打通（v4.0 &rarr; v5.0 实测，ota_1 &rarr; ota_0 双向切换均通过）。产测系统需要配合做版本与分区校验，以下是必须知道的约束：</p>
+
+  <table>
+    <tr><th>要点</th><th>说明</th><th>对产测的影响</th></tr>
+    <tr>
+      <td>版本号单一来源</td>
+      <td>固件版本由顶层 <code>CMakeLists.txt</code> 的 <code>PROJECT_VER</code> 决定，运行时从镜像 <code>esp_app_desc</code> 读出</td>
+      <td>上位机不要硬编码期望版本到代码，放配置文件；换版本只改配置</td>
+    </tr>
+    <tr>
+      <td>平台固件版本必须一致</td>
+      <td>FastBee 上传固件时填的版本 ≠ <code>PROJECT_VER</code> 会导致平台<b>无限重复下发</b>升级指令</td>
+      <td>发布固件时双人核对；产测若发现反复重启需先查此项</td>
+    </tr>
+    <tr>
+      <td>分区必须 64KB 对齐</td>
+      <td>otadata 结束在 0x12000，ota_0 只能从 <code>0x20000</code> 起，否则编译报错</td>
+      <td><code>AT+PART?</code> 返回的分区地址应固定为 ota_0=0x20000 / ota_1=0x160000</td>
+    </tr>
+    <tr>
+      <td>HTTPS 依赖时间同步</td>
+      <td>未校时则 mbedTLS 证书校验失败，下载必失败</td>
+      <td>OTA 测试项前必须过 <code>AT+SNTP?</code>（测试项 20）</td>
+    </tr>
+    <tr>
+      <td>升级成功判定看重启后版本</td>
+      <td>存在 finish 返回 OK 但 otadata 未写入的情况（已修复并加了手动 set_boot 兜底）</td>
+      <td>测试项 21 不能只看 status=3，必须重启后再读版本</td>
+    </tr>
+    <tr>
+      <td>回滚机制</td>
+      <td>新分区首启为 <code>PENDING_VERIFY</code>，再次重启才回滚；首启成功后 mark valid</td>
+      <td>测试项 22 通过连续两次断电验证回滚有效性</td>
+    </tr>
+  </table>
+
+  <div class="note">
+    完整 OTA 流程（服务端操作 + 设备端 14 步 + 踩坑记录 + 实测日志时间线）见项目内文档：
+    <code>docs/OTA升级完整案例.md</code>；端到端数据流见 <code>esp32c3_dataflow.html</code> 底部「OTA 双分区升级数据流」。
+  </div>
 
 </div>
 </div>

@@ -193,7 +193,7 @@ body {
 /* ── Branch row inside MCU ── */
 .branch-row {
   display: grid;
-  grid-template-columns: 1fr 1fr 1fr 1fr;
+  grid-template-columns: repeat(5, 1fr);
   gap: 6px;
   margin-top: 4px;
 }
@@ -217,7 +217,7 @@ body {
 /* ── HW peripherals row ── */
 .hw-row {
   display: grid;
-  grid-template-columns: 1fr 1fr 1fr 1fr;
+  grid-template-columns: repeat(5, 1fr);
   gap: 6px;
 }
 .hw-box {
@@ -352,13 +352,86 @@ body {
   text-align: center;
   margin: 1px 0;
 }
+
+/* ── OTA section ── */
+.ota-section {
+  margin-top: 16px;
+  border-top: 2px solid var(--c-border);
+  padding-top: 14px;
+}
+.ota-title {
+  font-size: 12px;
+  font-weight: 600;
+  margin-bottom: 10px;
+}
+.ota-tag {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 600;
+  background: #e1f5ee;
+  color: #0f6e56;
+  padding: 1px 8px;
+  border-radius: 10px;
+  margin-left: 6px;
+}
+.ota-flow {
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  gap: 6px;
+}
+.ota-step {
+  border: 1px solid var(--c-border);
+  padding: 8px 7px;
+  text-align: center;
+  min-height: 96px;
+}
+.ota-step-n {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 600;
+  color: var(--c-accent);
+}
+.ota-step-t {
+  font-size: 11px;
+  font-weight: 600;
+  margin: 3px 0;
+}
+.ota-step-d {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--c-text-sub);
+  line-height: 1.5;
+}
+.ota-meta {
+  display: flex;
+  gap: 12px;
+  margin-top: 12px;
+  flex-wrap: wrap;
+}
+.ota-meta-box {
+  border: 1px solid var(--c-border);
+  background: #f1f5f9;
+  padding: 7px 12px;
+}
+.ota-meta-label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+}
+.ota-meta-detail {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--c-text-sub);
+  margin-top: 2px;
+  line-height: 1.5;
+}
 </style>
 </head>
 <body>
 <div class="diagram-canvas">
   <div class="diagram-header">
     <h1 class="diagram-title">XS-XLD5 V3.0 大路灯控制板 — ESP32-C3 系统数据流图</h1>
-    <p class="diagram-subtitle">DATA FLOW: PHYSICAL INPUTS &rarr; MCU PROCESSING &rarr; PHYSICAL OUTPUTS</p>
+    <p class="diagram-subtitle">DATA FLOW: PHYSICAL INPUTS &rarr; MCU PROCESSING &rarr; PHYSICAL OUTPUTS &rarr; OTA DUAL-PARTITION UPDATE &middot; FW v5.0</p>
   </div>
 
   <!-- ══════════ Main 3-Column System ══════════ -->
@@ -476,6 +549,10 @@ body {
               <div class="branch-title">FastBee MQTT</div>
               <div class="branch-detail">property/post<br>function/get<br>function/post<br>info/post</div>
             </div>
+            <div class="branch-box">
+              <div class="branch-title">OTA Upgrade</div>
+              <div class="branch-detail">ota/get 触发<br>SNTP 校时<br>HTTPS 下载<br>set_boot + 重启</div>
+            </div>
           </div>
 
           <div class="arrow-down">&darr;</div>
@@ -497,6 +574,10 @@ body {
             <div class="hw-box">
               <div class="hw-title">Wi-Fi</div>
               <div class="hw-detail">FastBee MQTT<br>1883/tcp</div>
+            </div>
+            <div class="hw-box">
+              <div class="hw-title">OTA Flash</div>
+              <div class="hw-detail">ota_0 0x20000<br>ota_1 0x160000<br>otadata 0x10000</div>
             </div>
           </div>
 
@@ -533,7 +614,7 @@ body {
         <div class="out-arrow"></div>
         <div class="out-name">FastBee Cloud</div>
         <div class="out-gpio">Wi-Fi (MQTT 1883)</div>
-        <div class="out-detail">property/post &rarr; 亮度上报<br>function/get &rarr; 平台指令<br>function/post &rarr; 开关/模式回复<br>info/post &rarr; 设备在线状态</div>
+        <div class="out-detail">property/post &rarr; 亮度上报<br>function/get &rarr; 平台指令<br>function/post &rarr; 开关/模式回复<br>info/post &rarr; 设备在线状态<br>ota/get &rarr; 固件升级下发<br>ota/post &rarr; 升级进度/结果</div>
       </div>
 
       <div class="out-box">
@@ -569,6 +650,72 @@ body {
     </div>
   </div>
 
+  <!-- ══════════ OTA 升级流程 ══════════ -->
+  <div class="ota-section">
+    <div class="ota-title">OTA 双分区升级数据流 <span class="ota-tag">实测 v4.0 (ota_1) &rarr; v5.0 (ota_0) 已打通</span></div>
+    <div class="ota-flow">
+      <div class="ota-step">
+        <div class="ota-step-n">01</div>
+        <div class="ota-step-t">平台下发</div>
+        <div class="ota-step-d">/{productId}/{deviceNum}<br>/ota/get<br>version + downloadUrl</div>
+      </div>
+      <div class="ota-step">
+        <div class="ota-step-n">02</div>
+        <div class="ota-step-t">版本比对</div>
+        <div class="ota-step-d">5.0 &ne; 4.0<br>ota_app_<br>need_upgrade()</div>
+      </div>
+      <div class="ota-step">
+        <div class="ota-step-n">03</div>
+        <div class="ota-step-t">SNTP 校时</div>
+        <div class="ota-step-d">ntp.aliyun.com<br>时间有效后<br>才走 HTTPS</div>
+      </div>
+      <div class="ota-step">
+        <div class="ota-step-n">04</div>
+        <div class="ota-step-t">HTTPS 下载</div>
+        <div class="ota-step-d">crt_bundle 校验<br>partial=false<br>1.15MB / ~88s</div>
+      </div>
+      <div class="ota-step">
+        <div class="ota-step-n">05</div>
+        <div class="ota-step-t">写入对端</div>
+        <div class="ota-step-d">esp_https_ota<br>perform()<br>每 10% 上报</div>
+      </div>
+      <div class="ota-step">
+        <div class="ota-step-n">06</div>
+        <div class="ota-step-t">切换分区</div>
+        <div class="ota-step-d">set_boot(ota_0)<br>status=3<br>esp_restart()</div>
+      </div>
+      <div class="ota-step">
+        <div class="ota-step-n">07</div>
+        <div class="ota-step-t">Bootloader</div>
+        <div class="ota-step-d">读 otadata<br>选新分区<br>PENDING_VERIFY</div>
+      </div>
+      <div class="ota-step">
+        <div class="ota-step-n">08</div>
+        <div class="ota-step-t">验证上线</div>
+        <div class="ota-step-d">mark valid<br>取消回滚<br>运行 v5.0</div>
+      </div>
+    </div>
+
+    <div class="ota-meta">
+      <div class="ota-meta-box">
+        <div class="ota-meta-label">分区表 (4MB Flash)</div>
+        <div class="ota-meta-detail">otadata 0x10000 / 8KB<br>ota_0 0x20000 / 1.25MB<br>ota_1 0x160000 / 1.25MB</div>
+      </div>
+      <div class="ota-meta-box">
+        <div class="ota-meta-label">版本单一来源</div>
+        <div class="ota-meta-detail">PROJECT_VER &rarr; esp_app_desc<br>ota_app_get_version() 读取<br>上报/比对/横幅同源</div>
+      </div>
+      <div class="ota-meta-box">
+        <div class="ota-meta-label">上报主题 (三路同发)</div>
+        <div class="ota-meta-detail">/{deviceNum}/http/upgrade/reply<br>/{productId}/{deviceNum}/upgrade/reply<br>/{productId}/{deviceNum}/ota/post</div>
+      </div>
+      <div class="ota-meta-box">
+        <div class="ota-meta-label">状态定义</div>
+        <div class="ota-meta-detail">2 = 升级中<br>3 = 升级成功<br>4 = 升级失败</div>
+      </div>
+    </div>
+  </div>
+
   <!-- ══════════ Legend ══════════ -->
   <div class="legend">
     <div class="legend-item">
@@ -588,7 +735,7 @@ body {
       <span>引脚编号</span>
     </div>
     <div class="legend-item" style="margin-left:auto;">
-      <span>规格书: XS-XLD5 V3.0 | MCU: ESP32-C3 | 框架: ESP-IDF + FreeRTOS</span>
+      <span>规格书: XS-XLD5 V3.0 | MCU: ESP32-C3 | 框架: ESP-IDF v5.4.4 | 固件 v5.0 | OTA 双分区已打通</span>
     </div>
   </div>
 
