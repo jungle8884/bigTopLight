@@ -191,6 +191,13 @@ typedef struct {
 
 #define WIFI_MAX_RETRY          5       /* 直接连接最大重试次数 */
 
+/* 重连退避延时 (毫秒) — 按重试次数递增, 避免密集重连挤爆 AP
+ * 索引 = s_retry_count - 1, 超出数组长度时用最后一档 */
+#define WIFI_RETRY_DELAY_1      1000    /* 第 1 次重连等 1s */
+#define WIFI_RETRY_DELAY_2      2000    /* 第 2 次等 2s */
+#define WIFI_RETRY_DELAY_3      4000    /* 第 3 次等 4s */
+#define WIFI_RETRY_DELAY_MAX    8000    /* 第 4/5 次等 8s */
+
 /* ═══════════════════════════════════════════════════
  * FastBee 物联网平台配置
  *   产品级参数 (编译时固定):
@@ -202,14 +209,17 @@ typedef struct {
  *   配网流程: 设备 AP 模式 → App 下发 → 存 NVS → 连 WiFi → 连 MQTT
  * ═══════════════════════════════════════════════════ */
 
-#define FB_MQTT_HOST            "81.71.99.53"      /* MQTT 服务器地址 */
+/* MQTT 服务器地址: 必须填 PC 的局域网 IP (ipconfig 查 WLAN 的 IPv4),
+ * 不能写 localhost —— 在 ESP32 上 localhost 解析为设备自身 (127.0.0.1),
+ * 会导致 esp-tls 报 "delayed connect error: Connection reset by peer" */
+#define FB_MQTT_HOST            "192.168.31.204"   /* MQTT 服务器地址 (开发机 WLAN IP) */
 #define FB_MQTT_PORT            1883               /* MQTT 端口 (TLS=8883) */
 #define FB_PRODUCT_ID           "136"              /* 产品编号 */
 #define FB_MQTT_USERNAME        "FastBee"          /* 认证账号 */
-#define FB_MQTT_PASSWORD        "P55WMKIT5563GT7Z" /* 认证密码 */
+#define FB_MQTT_PASSWORD        "PL0Y38D29L3P7678" /* 认证密码 */
 /* 固件版本号已移到顶层 CMakeLists.txt 的 PROJECT_VER (单一来源),
  * 运行时通过 esp_app_get_description()->version 读取, 见 ota_app_get_version() */
-#define FB_OTA_BASE_URL         "https://www.fleetbee.top/prod-api" /* OTA 固件下载基础地址 */
+#define FB_OTA_BASE_URL         "http://192.168.31.204/dev-api" /* OTA 固件下载基础地址 (同 FB_MQTT_HOST, 不能用 localhost) */
 /* FB_DEVICE_NUM 和 FB_USER_ID 不再硬编码，由 AP 配网时 App 下发，存入 NVS */
 
 /* 物模型标识 — 必须与 FastBee 平台物模型定义一致 */
